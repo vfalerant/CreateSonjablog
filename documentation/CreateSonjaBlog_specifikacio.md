@@ -1,0 +1,495 @@
+# CreateSonjaBlog — Specifikáció (v1)
+
+## 1. Cél
+
+Egyetlen LibreOffice (.odt) dokumentumból, ami tartalmazza a bejegyzés
+metaadatait és a törzsszövegét, automatikusan létrehozni (vagy ütemezni)
+egy bejegyzést a sonjablog.com WordPress oldalon, a WordPress REST API-n
+keresztül — Elementor-szerkesztés és kézi copy-paste nélkül.
+
+A projekt a meglévő `odt_to_html` kódra épül (ODT-beolvasás és
+HTML-generálás), de önálló, új projektként (`CreateSonjaBlog`) készül,
+mert a feldolgozási logika és a GUI is jelentősen bővül.
+
+---
+
+## 2. Bemeneti dokumentum formátuma
+
+Egyetlen `.odt` fájl, amit a feleséged a megszokott módon ír LibreOffice
+Writerben. A dokumentum két részből áll:
+
+### 2.1 Metaadat-táblázat (a dokumentum tetején)
+
+Egy 2 oszlopos táblázat, fix bal oszloppal (mező neve) és kitöltendő
+jobb oszloppal (érték). A program a **dokumentum első táblázatát**
+tekinti metaadatnak — minden, ami utána következik, a bejegyzés
+törzsszövege.
+
+| Mező | Érték (példa) |
+|---|---|
+| Történet azonosító | *(opcionális — lásd lentebb)* |
+| Nyelv | hu |
+| Cím | A szalon – 7. rész |
+| Publikálás dátuma | 2026.08.03 09:00 |
+| Kategóriák | novella, karácsonyi |
+| Beleolvasó szövege | Egy kis faluban, ahol a hó sosem olvad el... |
+| SEO snippet | Novella a hegyi csendről és az emberi kapcsolatokról. |
+| SEO kulcsszavak | novella, hegyi csend, karácsony |
+| Kiemelt kép ID | 482 |
+| Sorozat neve | A szalon *(opcionális, csak sorozat esetén)* |
+| Rész sorszáma | 7 *(opcionális, csak sorozat esetén)* |
+
+Több kategória/kulcsszó esetén vesszővel elválasztva. A "Kiemelt kép
+ID" a WordPress médiatárban már feltöltött kép azonosítója (lásd 8.5).
+A "Sorozat neve" és "Rész sorszáma" mezők csak akkor kerülnek
+kitöltésre, ha a bejegyzés egy sorozat része (lásd 9. pont). A "Cím"
+mező a WordPress **posztcíme** (nem a történet saját alcíme — azt a
+törzsszöveg első bekezdése adja, lásd 2.2 pont).
+
+**"Nyelv"** (KÖTELEZŐ): `hu`, `en` vagy `es` — a blog Polylang által
+kezelt három nyelve (lásd a 10. pontot).
+
+**"Történet azonosító"** (opcionális): csak akkor KÖTELEZŐ kitölteni,
+ha a bejegyzés NEM sorozat része. Sorozat-résznél a program a
+"Sorozat neve" + "Rész sorszáma" párosból automatikusan előállítja —
+ILYENKOR ÜRESEN HAGYHATÓ. Ez az azonosító köti össze ugyanannak a
+történetnek a magyar/angol/spanyol nyelvű posztjait — FONTOS, hogy a
+"Sorozat neve" mezőt MINDHÁROM nyelvi táblázatban UGYANAZZAL a
+(magyar) névvel add meg, különben a program nem fogja tudni
+összekötni a nyelvi verziókat.
+
+### 2.2 Törzsszöveg (a táblázat után)
+
+A táblázat utáni teljes tartalom a bejegyzés szövege. Ezt a meglévő
+`odt_reader.py` + `html_generator.py` logika dolgozza fel.
+
+**A törzsszöveg ELSŐ bekezdése mindig `<h2>` címsorrá alakul** — ez
+a történet saját, hangulatos, az adott részre jellemző
+alcíme/címe (pl. "A hegyek csendje"), és **NEM ugyanaz**, mint a
+metaadat-táblázat "Cím" mezője. A "Cím" mező a WordPress **posztcíme**
+lesz (ez jelenik meg a téma saját `<h1>`-jeként, és ebből generálódik
+az URL is) — ezt a feleséged jellemzően a sorozat/rész-számozás
+szerint tölti ki (pl. "A szalon – 7. rész"). A törzsszöveg első
+bekezdése (a `<h2>`) ettől függetlenül, a szöveg tartalmán belül
+jelenik meg, közvetlenül a posztcím alatt:
+
+```
+<h1> A szalon – 7. rész        <- WordPress posztcím (metaadat "Cím" mező)
+<h2> A hegyek csendje          <- a törzsszöveg első bekezdése (automatikusan h2-vé alakítva)
+(a történet szövege...)
+```
+
+*(Korábban, a fejlesztés közben egy pillanatra eltávolítottuk ezt a
+logikát, mert azt hittük, feleslegessé vált a metaadat-táblázat
+bevezetésével — kiderült azonban, hogy továbbra is szükség van rá,
+csak más okból: nem a poszt egyetlen címeként, hanem egy, a
+posztcím ALATT megjelenő, a történetre jellemző alcímként.)*
+
+---
+
+## 3. Projektstruktúra
+
+```
+CreateSonjaBlog/
+├── main.py                      # GUI indítása
+├── converter/
+│   ├── odt_reader.py            # táblázat-felismerés metaadatokhoz
+│   ├── html_generator.py        # az első bekezdés automatikusan <h2> alcím lesz
+│   ├── metadata_parser.py       # metaadat-táblázat → strukturált dict
+│   ├── validators.py            # az összes validációs szabály
+│   └── navigation.py            # sorozat-navigáció (gombok, jelölő), nyelvenként
+├── wordpress/
+│   ├── wp_client.py             # REST API hívások (poszt létrehozás, kategória, nyelv, stb.)
+│   ├── config.py                # .env/secrets beolvasása
+│   └── translations.py          # fordítás-csoportok állapotának kezelése
+├── ui/
+│   └── main_window.py           # metaadat-előnézet, hibalista, "Poszt létrehozása" gomb
+├── config/
+│   └── sorozatok.json           # sorozatonkénti, nyelvenkénti navigációs adatok (KÉZZEL karbantartott)
+├── state/
+│   └── forditasi_csoportok.json # a program automatikusan írja/olvassa, NEM kézi szerkesztésre
+├── .env/
+│   └── secrets                  # WordPress bejelentkezési adatok (KÉZZEL karbantartott, TITKOS)
+├── wordpress_functions_php_kiegeszites.php  # a WordPress oldalra másolandó mu-plugin
+└── requirements.txt             # odfpy és defusedxml törölve, requests hozzáadva
+```
+
+---
+
+## 4. WordPress oldali előfeltételek (egyszeri beállítás)
+
+1. **Application Password létrehozása**: WP admin → Felhasználók →
+   Profil → Application Passwords → generálás. Ezt a jelszót a
+   `config.py`-ban (vagy egy külön, nem verziókezelt `.env`/`secrets`
+   fájlban) tároljuk, **nem** kerül fel GitHub-ra.
+
+2. **RankMath meta mezők + Polylang REST-integráció**: lásd a
+   `wordpress_functions_php_kiegeszites.php` fájlt — ezt kell
+   elhelyezni `wp-content/mu-plugins/createsonjablog.php` néven
+   (vagy beilleszteni a téma `functions.php`-jába). Ez a fájl EGYBEN
+   tartalmazza a RankMath mezők REST-re nyitását (`rank_math_title`,
+   `rank_math_description`, `rank_math_focus_keyword`,
+   `rank_math_primary_category`) ÉS a Polylang integrációhoz
+   szükséges HÁROM egyéni REST végpontot (`set-language`,
+   `link-translations`, `category-id` — lásd 10. pont).
+
+   **Fontos tudnivaló a RankMath "SEO pontszámról" (pl. 63/100):**
+   ez a szám KIZÁRÓLAG a RankMath böngészőben futó JavaScript-
+   elemzőjének terméke — csak akkor számolódik ki, ha a posztot
+   ténylegesen MEGNYITJÁTOK a WordPress szerkesztőben (Elementor
+   vagy Gutenberg). Az API-val létrehozott posztoknál ez "N/A"
+   lesz, amíg meg nem nyitjátok egyszer szerkesztőben. EZ NEM HIBA
+   és NEM BEFOLYÁSOLJA a tényleges, élesben látható SEO-adatokat
+   (a `<title>` tag, meta description, séma-jelölés) — azok már a
+   poszt létrehozásakor helyesen beállításra kerülnek a fenti meta
+   mezőkön keresztül. A pontszám csupán egy opcionális, írási
+   segédeszköz — a program SZÁNDÉKOSAN nem próbálja ezt
+   automatizálni (a RankMath elemzési logikája nem dokumentált és
+   gyakran változik, ezért ennek Python-beli újraépítése törékeny
+   és felesleges lenne).
+
+3. **Kategóriák előre léteznek** a WordPress oldalon — a program nem
+   hoz létre új kategóriát, csak a meglévők ID-ját kérdezi le névből.
+
+---
+
+## 5. Feldolgozási folyamat (lépésről lépésre)
+
+1. Felhasználó (a férj) betölti az `.odt` fájlt a GUI-ban.
+2. `odt_reader.py` beolvassa a dokumentumot, elkülöníti az első
+   táblázatot (metaadatok) a maradék tartalomtól.
+3. `metadata_parser.py` a táblázat celláiból dict-et épít
+   (`cim`, `datum`, `kategoriak`, `beleolvaso`, `seo_snippet`,
+   `seo_kulcsszavak`, `nyelv`, `csoport_azonosito`, stb.).
+4. Validáció fut le (lásd 6. pont) — ha hiba van, a GUI megjeleníti,
+   és a "Poszt létrehozása" gomb nem aktív.
+5. Ha minden rendben: `html_generator.py` legenerálja a törzsszöveg
+   HTML-jét (a törzsszöveg első bekezdése automatikusan `<h2>`
+   alcím lesz, lásd 2.2 pont); ha a bejegyzés sorozat része,
+   `navigation.py` a törzsszöveg alá fűzi a navigációs HTML-t is.
+6. A GUI megjeleníti az előnézetet: metaadatok szövegesen + a
+   generált HTML renderelt előnézete — mielőtt bármi elküldésre
+   kerülne a WordPress-nek.
+7. Felhasználó rákattint a "Poszt létrehozása" gombra.
+8. `wp_client.py` (a specifikáció 10. pontjában részletezett,
+   KRITIKUS sorrendben, lásd ott miért):
+   - létrehozza a posztot (cím, tartalom, excerpt, dátum, SEO
+     mezők, `status: "future"`) — MÉG nyelv és kategóriák nélkül,
+   - beállítja a poszt nyelvét (mu-plugin `set-language` végpont),
+   - lekérdezi (és cache-eli) a megadott kategórianevek ID-jait, a
+     poszt nyelvén (mu-plugin `category-id` végpont),
+   - egy frissítő kéréssel hozzárendeli a kategóriákat és az
+     elsődleges kategóriát.
+9. `wordpress/translations.py` rögzíti a poszt nyelvét/ID-ját a
+   helyi `state/forditasi_csoportok.json` fájlban, és ha ehhez a
+   történethez már 2+ nyelvi verzió ismert, összekapcsolja őket
+   Polylang-fordításként (mu-plugin `link-translations` végpont).
+10. A GUI visszajelzi az eredményt: siker esetén a poszt szerkesztői
+    linkjét és az eddig elkészült nyelveket, hiba esetén a
+    hibaüzenetet (pl. "nincs ilyen kategória: ...").
+
+---
+
+## 6. Validáció (feldolgozás előtti ellenőrzések)
+
+A "Poszt létrehozása" gomb csak akkor aktív, ha az alábbiak mind
+teljesülnek:
+
+- van metaadat-táblázat a dokumentumban,
+- a **Cím** mező nem üres,
+- a **Publikálás dátuma** mező érvényes dátum/idő formátumban van,
+- a **Kategóriák** mező nem üres, és minden felsorolt kategórianév
+  (előzetes, cache-elt lekérdezés alapján) létezik a WordPress
+  oldalon,
+- a törzsszöveg (táblázat utáni rész) nem üres.
+
+Minden hiba egy jól olvasható lista formájában jelenik meg a GUI-ban,
+konkrétan megnevezve, melyik mezővel/résszel van gond.
+
+---
+
+## 7. GUI (bővített felület)
+
+A meglévő `main_window.py` felépítésére építve:
+
+- **"ODT fájl betöltése"** gomb — változatlan.
+- **Metaadat-előnézet panel** (ÚJ) — a beolvasott metaadatokat
+  szövegesen listázza (Cím, Dátum, Kategóriák, stb.), hogy
+  ellenőrizhető legyen betöltés után rögtön.
+- **Hibalista panel** (ÚJ) — validációs hibák, ha vannak; ez esetben
+  a "Poszt létrehozása" gomb inaktív.
+- **HTML szerkesztő + élő előnézet** — változatlan (megmarad a
+  kézi finomítás lehetősége közvetlenül elküldés előtt).
+- **"Poszt létrehozása" gomb** (ÚJ, a meglévő "HTML másolása" gomb
+  mellett) — csak validáció után aktív; kattintásra elindítja az 5.
+  pontban leírt WordPress API hívást.
+- Sikeres létrehozás után egy rövid visszajelzés (pl. "Poszt
+  létrehozva, ütemezve: 2026.08.03 09:00" + link a szerkesztőhöz).
+
+---
+
+## 8. Eldöntött kérdések (v1 lezárva)
+
+**8.1 Dátumformátum a táblázatban — ELDÖNTVE**
+`ÉÉÉÉ.HH.NN ÓÓ:PP` (pl. `2026.08.03 09:00`), szigorú ellenőrzéssel;
+hibás formátum esetén validációs hiba, nincs "kitalálás".
+
+**8.2 Nem létező kategória — ELDÖNTVE**
+Validációs hiba, konkrét hibaüzenettel (megnevezve, melyik
+kategórianév nem található). A poszt nem hozható létre, amíg nincs
+javítva (kézzel a WP adminban, vagy a dokumentumban).
+
+**8.3 Publikálási állapot (status) logika — ELDÖNTVE, MÓDOSÍTVA**
+A biztonság kedvéért **csak jövőbeli dátum engedélyezett**:
+- validáció: a "Publikálás dátuma" mezőnek a jelen pillanatnál
+  **későbbinek** kell lennie — ha nem az, validációs hiba
+  ("A dátum nem lehet jelenlegi vagy múltbeli — adj meg jövőbeli
+  időpontot."),
+- a `status` mindig `"future"` — a program **soha nem** publikál
+  azonnal, mindig ütemezi a WordPress-re, hogy ellenőrizhető legyen
+  ütemezett állapotban a publikálás előtt.
+
+**8.4 "Beleolvasó szövege" (Excerpt) — ELDÖNTVE, ÉS JÖVŐBELI BŐVÍTÉS**
+V1: a WordPress `excerpt` mezőjébe kerül, egyszerű szövegként.
+
+V2 (későbbi bővítés, most rögzítve, hogy tudjuk mire tervezzünk):
+a "Beleolvasó szövege" mező akár több bekezdésből is állhat, ezeket a
+program automatikusan HTML bekezdésekké alakítja. Az **első**
+bekezdés sima szövegként/egyszerű `<p>`-ként megy be, minden
+**további** bekezdés a következő formázással:
+
+```html
+<p style="margin-top:-1.1em; text-align:justify;">– Ó, jaj, ne! Szegény Nico!</p>
+```
+
+(A negatív felső margó a bekezdések közti térköz szűkítésére szolgál
+az excerpt megjelenésekor.) Ez egy elkülönült, egyszerűbb
+bekezdés→HTML logika lesz, nem a fő `html_generator.py` bővítése.
+
+**8.5 Képek kezelése — ELDÖNTVE (kiemelt kép)**
+Új metaadat mező: **"Kiemelt kép ID"** — a WordPress médiatárban már
+feltöltött kép numerikus azonosítója (attachment ID). A program a
+poszt létrehozásakor beállítja a `featured_media` mezőt erre az
+ID-ra. Validáció: a program lekérdezi (`GET
+/wp-json/wp/v2/media/{id}`), és ha nem található ilyen ID-jű média,
+validációs hiba ("Nincs ilyen ID-jű kép a médiatárban: ..."). Ez csak
+a **kiemelt képet** fedi le, nem a törzsszövegbe ágyazott képeket
+(ilyenre jelenleg nincs igény).
+
+---
+
+## 9. Elementor-struktúra — ELDÖNTVE (egyszerűsített, egy widgetes megoldás)
+
+A jelenlegi kézi munkafolyamatban minden poszt Elementor-felépítése két
+szekcióból, több oszlopból és kétféle widgetből (Text Editor + HTML)
+állt. Ehelyett az új projektben egy jelentősen egyszerűbb, de továbbra
+is Elementorban maradó struktúrát használunk:
+
+```
+Section
+└── Column
+    └── HTML widget (Elementor widgetType: "html")
+        └── tartalma: a bejegyzés törzsszövegének HTML-je
+            + alatta egy CSS-alapú (pl. flexbox) kétoszlopos <div>
+              a navigációs linkeknek (sorozat eleje / következő rész)
+```
+
+**Miért ez mellett döntöttünk:**
+- Az Elementor "widget" fogalma **nem** azonos a klasszikus WordPress
+  sidebar-widgetekkel — ez a builder saját tartalmi blokkja, ami a
+  poszt `_elementor_data` meta mezőjében tárolódik.
+- Egyetlen szekció/oszlop/widget → sokkal egyszerűbb és kisebb
+  kockázatú `_elementor_data` JSON-t kell a programnak felépítenie és
+  beírnia, mint egy több szekciós/oszlopos/widget-típusos struktúránál.
+- Megmarad az Elementorban való utólagos, kézi szerkeszthetőség
+  lehetősége (ez fontos szempont volt).
+- A navigációs linkek kétoszlopos elrendezését egyszerű CSS-sel (a
+  HTML kódon belül) oldjuk meg, nem Elementor-oszlopokkal.
+
+A poszt létrehozásakor a programnak az alábbi meta mezőket kell
+beírnia (a sima `content` mező mellett/helyett):
+- `_elementor_data` — a fenti egy-widgetes struktúra JSON-ja, benne a
+  teljes generált HTML-lel,
+- `_elementor_edit_mode` = `"builder"`,
+- `_elementor_template_type` = `"wp-post"`,
+- `_elementor_version` — az adott oldalon futó Elementor verziószáma
+  (ezt egyszer le kell kérdezni/rögzíteni).
+
+**A "sorozat navigáció" tartalma — VÉGLEGESÍTVE:** a
+`config/sorozatok.json` fájl sorozatonként, **nyelvenként** tárolja
+az adatokat (mert a Polylang-integráció miatt a blog három nyelvű —
+lásd 10. pont): a nyelvspecifikus megjelenő sorozatnevet
+(`megjelenitett_nev`), az első rész URL-jét és címét
+(`elso_resz_url`, `elso_resz_cim`), valamint egy URL-**sablont**
+(`resz_url_sablon`, pl. `/a-szalon-{resz}-resz/`) tetszőleges
+későbbi rész linkjének felépítéséhez. A gomb körüli FIX szövegek
+("Új vagy?", "Folytatás", stb.) nyelvenkénti fordítása magában a
+`converter/navigation.py`-ban van (`NAV_TEXT_TEMPLATES`), nem a
+JSON-configban, mert ezek nem sorozat-specifikusak.
+
+A metaadat-táblázatba két új, opcionális mező került: **"Sorozat
+neve"** és **"Rész sorszáma"** — ha ki vannak töltve, a program ez
+alapján generálja a navigációs HTML-t a sablonból, nem kell minden
+alkalommal kézzel újraírni.
+
+**A gombstílus eredete — TISZTÁZVA:** a `blog-button` (és
+`blog-button-emoji`) egy **globális, site-szintű CSS class**, a
+WordPress Testreszabó "Additional CSS" mezőjében definiálva (nem
+egy adott Elementor-widget saját stílusa). Ez azt jelenti, hogy a
+programunk által generált, sima `<a class="blog-button" href="...">`
+linkek **változtatás nélkül**, automatikusan felveszik a megfelelő
+kinézetet (lekerekített sarkok, színek, mobil-reszponzív viselkedés) —
+nem kell semmit Elementor-widgetté alakítani vagy a HTML-generátorban
+külön kezelni ezt a stílust.
+
+**KIEGÉSZÍTÉS a gombstílushoz:** a kézzel készített referencia-gomb
+Elementor "Advanced" fülén widget-szintű beállítások is voltak
+(háttérszín `#8C6239`, hover-szín `#B07A43`, box-shadow,
+lekerekítettebb sarok, eltérő padding) — ezek NEM részei a globális
+`.blog-button` class-nak, ezért a program a saját, generált HTML-je
+elé egy **szűken célzott** (`.sonjablog-nav-item .blog-button`),
+beágyazott `<style>` blokkot ír, ami csak a MI navigációs gombjainkra
+hat, a `.blog-button` class más előfordulásait (pl. régebbi, kézzel
+készített posztokon) nem érinti. Ugyanez a `<style>` blokk oldja meg
+azt is, hogy a gomb NE nyúljon szét a teljes sorszélességre, amikor
+csak egyetlen gomb látható (lásd `.sorozat-eleje`/`.sonjablog-nav-item`
+csomagoló elem, `max-width` korlátozással, a mobil nézet
+érintetlenül hagyásával).
+
+**"Következő rész" gomb — HTML-generálás ELKÉSZÜLT, automatikus
+beillesztés MÉG NEM:** a `converter/navigation.py` tartalmaz egy
+`build_next_part_button_html()` függvényt, ami TETSZŐLEGES
+rész-számhoz felépíti a megfelelő nyelvű "következő rész" gomb
+HTML-jét (a `resz_url_sablon` és a nyelvi szöveg-sablonok alapján).
+EZ MÉG NINCS BEKÖTVE semmilyen automatikus poszt-frissítő
+folyamatba — lásd alább.
+
+**"Következő rész" link és poszt-frissítés — ELDÖNTVE:** mivel ez a
+link csak azután jelenik meg egy résznél, hogy a *következő* rész már
+megjelent, a korábbi rész posztját utólag frissíteni kellene. V1-ben
+ebből **csak a láthatatlan jelölő** (HTML comment) kerül bele a
+generált HTML-be, pontosan azon a helyen, ahova a leendő "következő
+rész" link majd bekerül — ez biztosítja, hogy a program **csak** az
+általa generált posztokat tudja majd biztonságosan azonosítani és
+frissíteni. Maga a poszt-frissítő funkció (ami visszamenőleg beszúrja
+a linket egy korábbi részbe, a már kész `build_next_part_button_html()`
+felhasználásával) egy **későbbi lépésben** készül el, miután az alap
+poszt-generálás megbízhatóan működik éles használatban (2026.07.27:
+ez a feltétel gyakorlatilag teljesült — a poszt-frissítő funkció a
+következő tervezett fejlesztési lépés).
+
+---
+
+## 10. Polylang (többnyelvűség) integráció
+
+A blog **három nyelvű** (magyar `hu`, angol `en`, spanyol `es`),
+Polylang **ingyenes** verzióval. A munkafolyamat: a feleséged
+elkészíti a magyar ODT-t, majd lefordítja angolra és spanyolra
+(3 önálló ODT-fájl), és mindhárom nyelvi verziót **külön-külön**
+hozod létre a programmal — nagyjából egy időben ütemezve, hogy a
+posztok egyszerre váljanak olvashatóvá mindhárom nyelven.
+
+**Technikai háttér:** a Polylang ingyenes verziója NEM támogatja a
+nyelv beállítását/a fordítások összekapcsolását a szabványos
+WordPress REST API-n keresztül (ez csak a Pro verzióban elérhető).
+Emiatt a `wordpress_functions_php_kiegeszites.php` mu-plugin három
+egyéni REST végpontot regisztrál:
+
+- `POST sonjablog/v1/set-language` — a Polylang saját
+  `pll_set_post_language()` PHP-függvényét hívja meg
+- `POST sonjablog/v1/link-translations` — a Polylang saját
+  `pll_save_post_translations()` PHP-függvényét hívja meg
+- `GET sonjablog/v1/category-id?name=...&lang=...` — lásd lentebb,
+  ÉLES HIBAKERESÉS UTÁN véglegesített megoldás a kategória-keresésre
+
+**A kategória-keresés története (élesben felmerült, megoldott
+probléma):** első nekifutásra a szabványos `/wp/v2/categories`
+végpontot próbáltuk a `lang` query-paraméterrel megcélozni — kiderült,
+hogy ez a paraméter a hivatalos Polylang dokumentáció szerint CSAK
+Pro verzióban működik natívan, Free verzióban a WordPress egyszerűen
+figyelmen kívül hagyja. Egy második próbálkozás a Polylang belső,
+nem hivatalos "curlang" állapotának kézi beállítására épült — ez
+ELMÉLETBEN dokumentált trükk, de a gyakorlatban NEM bizonyult
+megbízhatónak (feltehetően Polylang-verziófüggő). A VÉGLEGES,
+működő megoldás: egy SAJÁT REST végpont (`category-id`), ami
+PHP-szinten közvetlenül a `get_terms(['lang' => ...])` hívást
+használja — ez a Polylang legalapvetőbb, Free verzióban is stabil,
+régóta bevált funkciója (nem REST-specifikus, nem Pro-only), mert a
+Polylang saját maga is ezt használja mindenhol belül.
+
+**KRITIKUS SORREND (élesben felmerült, megoldott probléma):** a
+poszt létrehozásakor **ELŐSZÖR** kell beállítani a poszt NYELVÉT, és
+**CSAK UTÁNA** szabad hozzárendelni a kategóriákat — fordított
+sorrendben (ahogy elsőre implementáltuk) a Polylang CSENDBEN
+figyelmen kívül hagyja az idegen nyelvű kategória hozzárendelését
+egy még nyelv nélküli (ilyenkor alapértelmezett nyelvűnek számító)
+poszthoz, hibaüzenet nélkül. Emiatt a `wp_client.create_post()` HÁROM
+lépésben dolgozik: (1) poszt létrehozása kategóriák nélkül, (2) nyelv
+beállítása, (3) egy külön, frissítő kéréssel a kategóriák (és az
+elsődleges kategória) hozzárendelése.
+
+**A "fordítás-csoport azonosító"**: mivel a három nyelvi verzió
+külön-külön, akár más napon készül el, a programnak emlékeznie kell,
+melyik poszt melyik történet melyik nyelvi verziója. Ezt egy helyi
+állapot-fájl (`state/forditasi_csoportok.json`) tartja nyilván — ezt
+a fájlt KIZÁRÓLAG a program kezeli, nem kell kézzel szerkeszteni.
+Amint egy adott történetnek legalább 2 nyelvi verziója elkészült, a
+program automatikusan összeköti őket Polylang-fordításként; a
+harmadik nyelv elkészültekor mindhárom véglegesen összekapcsolódik.
+
+**Elsődleges kategória**: ha egy posztnak több kategóriája van, a
+megadott lista **első** eleme lesz a RankMath "Primary Term"
+beállítása (`rank_math_primary_category` meta mező) — ez befolyásolja
+pl. az URL-ben használt kategória-szeletet.
+
+**FONTOS, amit a Polylang oldalán is ellenőrizni kell:** a Languages
+→ Settings → "Taxonomies" szekcióban a "Categories" opciónak
+BEKAPCSOLVA kell lennie ("Activate languages and translations"),
+különben a kategóriák nem kapnak nyelvet, és a fenti mechanizmus nem
+tud értelmesen működni.
+
+---
+
+## 11. Windows .exe csomagolás
+
+A program `python main.py`-jal futtatható szkriptként, DE a
+feleséged számára kényelmesebb egy önálló, Python telepítése
+nélkül futtatható `.exe` — ezt a `build_exe.bat` szkript állítja
+elő (PyInstaller segítségével), a projekt gyökeréből futtatva.
+
+**Fontos technikai előfeltétel:** mivel egy becsomagolt `.exe`
+futtatásakor a "jelenlegi munkakönyvtár" a helyzettől függően
+változhat (Intéző dupla-kattintás, parancsikon, stb.), a program
+a `paths.py` modul segítségével MINDIG a saját (az `.exe`
+fájlt tartalmazó) mappájához képest keresi a `.env/secrets`,
+`config/sorozatok.json` és `state/forditasi_csoportok.json`
+fájlokat — NEM a munkakönyvtárhoz képest. Ezt a `.env/` és
+`config/` mappákat az elkészült `.exe` MELLÉ kell másolni (a
+`state/` mappát a program magától létrehozza).
+
+**A build folyamata**: `build_exe.bat` (1) telepíti a
+`requirements.txt` függőségeit, (2) telepíti a PyInstaller
+csomagot, (3) legyártja az `.exe`-t `--onefile --windowed`
+móddal a `dist/` mappába. Ezt Windows gépen kell futtatni — a
+PyInstaller nem tud "keresztfordítani" más operációs rendszerről.
+
+---
+
+## 12. Amit a projekt NEM csinál (kezdetben)
+
+- Nem hoz létre automatikusan új WordPress kategóriát.
+- Nem tölt fel új képet a médiatárba — a kiemelt képnek már fel kell
+  lennie töltve, a dokumentum csak annak ID-jét adja meg.
+- Nem kezel a törzsszövegbe ágyazott képeket, csak a kiemelt képet.
+- Nem ad lehetőséget meglévő poszt szerkesztésére/frissítésére, csak
+  új poszt létrehozására (kivéve, ha a 9. pontban tárgyalt "következő
+  rész" link automatizálása mellett döntötök).
+- Nem épül webes (böngészőben futó) felület — a jelenlegi terv PySide6
+  asztali GUI-t céloz. Mivel a feldolgozó logika (`converter/`,
+  `wordpress/`) el van választva a felülettől (`ui/`), egy esetleges
+  jövőbeli webes verzió (pl. Streamlit/NiceGUI, hogy iPadről/távolról
+  is lehessen posztot közzétenni) később, a meglévő logika
+  újraírása nélkül is megvalósítható — ez most nem befolyásolja a
+  tervezést, csak egy nyitva hagyott lehetőség.
+- Nem kezeli a `.venv` vagy egyéb fejlesztői környezeti fájlokat —
+  ezekre a meglévő `.gitignore` vonatkozik változatlanul.

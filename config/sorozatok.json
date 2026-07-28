@@ -1,0 +1,24 @@
+{
+  "_megjegyzes": "Ez a fájl tárolja sorozatonként, NYELVENKÉNT az első rész adatait ÉS egy URL-sablont a további részekhez. A LEGFELSŐ SZINTŰ kulcs (pl. 'A szalon') a sorozat BELSŐ, magyar azonosítója — ennek PONTOSAN meg kell egyeznie az ODT metaadat-táblázat 'Sorozat neve' mezőjével, MINDHÁROM nyelvi dokumentumban. A 'resz_url_sablon' mezőben a {resz} helyére kerül majd a rész sorszáma (pl. '/a-szalon-{resz}-resz/' -> '/a-szalon-14-resz/').",
+
+  "A szalon": {
+    "hu": {
+      "megjelenitett_nev": "A szalon",
+      "elso_resz_url": "/a-szalon-1-resz/",
+      "elso_resz_cim": "A szalon – 1. rész",
+      "resz_url_sablon": "/a-szalon-{resz}-resz/"
+    },
+    "en": {
+      "megjelenitett_nev": "The Salon",
+      "elso_resz_url": "/the-salon-part-1/",
+      "elso_resz_cim": "The Salon – Part 1",
+      "resz_url_sablon": "/the-salon-part-{resz}/"
+    },
+    "es": {
+      "megjelenitett_nev": "El salón",
+      "elso_resz_url": "/el-salon-parte-1/",
+      "elso_resz_cim": "El salón – Parte 1",
+      "resz_url_sablon": "/el-salon-parte-{resz}/"
+    }
+  }
+}

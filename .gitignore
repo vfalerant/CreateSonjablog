@@ -1,0 +1,36 @@
+# ============================================================
+# CreateSonjaBlog - .gitignore
+# ============================================================
+
+# --- ÉRZÉKENY ADATOK — SOHA ne kerüljenek fel GitHub-ra ---
+# A WordPress bejelentkezési adatokat (Application Password, stb.)
+# tartalmazza. A TELJES ".env" mappát kihagyjuk, nem csak a
+# "secrets" fájlt, hogy véletlenül se maradjon benne semmi.
+.env/
+.claude/
+
+# --- Helyi, automatikusan generált állapot ---
+# A program maga írja/olvassa (melyik történet melyik nyelvi
+# verziója melyik WordPress poszt-ID-hoz tartozik) — ez GÉPENKÉNT/
+# telepítésenként eltérő futásidejű adat, nem forráskód, nem kell
+# verziókezelni. (A "config/sorozatok.json" ETTŐL ELTÉRŐEN marad a
+# repóban — azt te szerkeszted kézzel, az valódi projekt-adat.)
+state/
+
+# --- Python futásidejű, generált fájlok ---
+__pycache__/
+*.pyc
+*.pyo
+
+# --- PyInstaller build kimenetek ---
+# Ezeket a build_exe.bat generálja minden futtatáskor — nem kell
+# verziókezelni, könnyen újra elő lehet állítani.
+build/
+dist/
+*.spec
+
+# --- Operációs rendszer / szerkesztő saját fájljai ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
