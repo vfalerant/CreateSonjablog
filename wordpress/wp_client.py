@@ -63,7 +63,7 @@ def _new_element_id():
     return uuid.uuid4().hex[:7]
 
 
-def build_elementor_data(html_content):
+def build_elementor_data(html_content, cta_shortcode=None):
     """
     Felépíti az Elementor "_elementor_data" meta mezőjének
     TARTALMÁT (egy Python listát/dict-eket, amit a hívó fog
@@ -73,14 +73,35 @@ def build_elementor_data(html_content):
 
         Section
         └── Column
-            └── HTML widget (widgetType: "html")
-                └── settings.html = html_content
+            ├── HTML widget (widgetType: "html")
+            │   └── settings.html = html_content
+            └── Shortcode widget (widgetType: "shortcode") — CSAK
+                HA cta_shortcode meg van adva
+                └── settings.shortcode = cta_shortcode
 
-    Ez a JELENLEGI, SZÁNDÉKOSAN EGYSZERŰ megoldás — NINCS benne
-    külön szekció/oszlop a sorozat-navigációs linkeknek (az egy
-    KÉSŐBBI lépésben, a "sorozat navigáció" fázisban kerül bele,
-    ugyanebbe a HTML-be, CSS-alapú elrendezéssel, NEM külön
-    Elementor-elemként).
+    2026.09.01-i bővítés (szerzői CTA-doboz): a CTA-dobozt NEM lehet
+    ugyanabba a HTML widgetbe tenni, mint a törzsszöveget/
+    navigációt, mert az Elementor HTML widgetje SZÁNDÉKOSAN nem
+    futtatja le a WordPress-shortcode-okat (ezt gyakorlati teszttel
+    igazoltuk — sem a natív Elementor "[elementor-template]", sem a
+    Dynific Addons for Elementor "[INSERT_ELEMENTOR]" rövidkódja nem
+    dolgozódik fel HTML widgetben, csak dedikált Shortcode
+    widgetben vagy Text Editor widgetben). Ezért a CTA-dobozhoz egy
+    MÁSODIK, KÜLÖN widget-elemet adunk ugyanabba az oszlopba —
+    ennek a widgetType-ja "shortcode" (ez az Elementor saját,
+    beépített Shortcode widgetje, lásd
+    https://github.com/elementor/elementor/blob/main/includes/widgets/shortcode.php),
+    a szöveges tartalma pedig a "shortcode" settings-kulcsban van,
+    NEM "html"-ben.
+
+    Ha cta_shortcode=None (vagy üres string) — pl. mert az adott
+    nyelvhez még nincs beállítva CTA-sablon ID a secrets fájlban,
+    lásd WordPressClient.__init__ és _build_cta_shortcode() — a
+    második widget EGYSZERŰEN KIMARAD, a poszt a régi, egy-widgetes
+    szerkezetével jön létre. Ez SZÁNDÉKOS, defenzív viselkedés
+    (ugyanaz az elv, mint a navigation.build_navigation_html()-nél):
+    egy hiányzó CTA-konfiguráció miatt nem szabadna, hogy elszálljon
+    a teljes poszt-létrehozás.
 
     FIGYELEM, HA VALAHA HIBÁT KELL KERESNI ITT: az Elementor a saját
     JSON-sémáját NEM dokumentálja hivatalosan, ez a struktúra
@@ -90,10 +111,15 @@ def build_elementor_data(html_content):
     érdemes összehasonlítani egy KÉZZEL, a legújabb Elementor
     verzióval létrehozott poszt _elementor_data tartalmával (ezt pl.
     egy adatbázis-lekérdezéssel vagy a WP admin "Egyéni mezők"
-    nézetével lehet megnézni).
+    nézetével lehet megnézni). A "shortcode" widgetType-ot és a
+    "shortcode" settings-kulcsot az Elementor hivatalos GitHub
+    repójából (includes/widgets/shortcode.php, get_name() és a
+    "shortcode" nevű control) ellenőriztük, tehát ez NEM
+    feltételezés — de ha egy jövőbeli Elementor-verzió átnevezné
+    ezeket, itt kell javítani.
     """
 
-    widget = {
+    html_widget = {
         "id": _new_element_id(),
         "elType": "widget",
         "widgetType": "html",
@@ -103,6 +129,24 @@ def build_elementor_data(html_content):
         "elements": []
     }
 
+    column_elements = [html_widget]
+
+    # a CTA-doboz widget csak akkor kerül be, ha TÉNYLEGESEN van
+    # hozzá rövidkód (lásd a docstring "defenzív viselkedés" részét)
+    if cta_shortcode:
+
+        shortcode_widget = {
+            "id": _new_element_id(),
+            "elType": "widget",
+            "widgetType": "shortcode",
+            "settings": {
+                "shortcode": cta_shortcode
+            },
+            "elements": []
+        }
+
+        column_elements.append(shortcode_widget)
+
     column = {
         "id": _new_element_id(),
         "elType": "column",
@@ -111,7 +155,7 @@ def build_elementor_data(html_content):
         "settings": {
             "_column_size": 100
         },
-        "elements": [widget]
+        "elements": column_elements
     }
 
     section = {
@@ -163,6 +207,27 @@ class WordPressClient:
         )
 
         self.elementor_version = secrets["WP_ELEMENTOR_VERSION"]
+
+        # 2026.09.01-i bővítés: a szerzői CTA-doboz Elementor Saját
+        # sablonjainak ID-ja, NYELVENKÉNT (lásd build_elementor_data
+        # "cta_shortcode" paraméterének magyarázatát). Ezeket a
+        # Dynific Addons for Elementor plugin (korábbi nevén
+        # "AnyWhere Elementor") "[INSERT_ELEMENTOR id=xxx]" rövidkód-
+        # jához használjuk fel — az ID-t a WP admin Sablonok/Saját
+        # sablonok listájából (vagy a sablon szerkesztő URL-jének
+        # "post=" paraméteréből) kell kiolvasni.
+        #
+        # SZÁNDÉKOSAN OPCIONÁLIS kulcsok a secrets fájlban (NEM
+        # kerülnek a config.REQUIRED_KEYS listájába) — ha egy
+        # nyelvhez (még) nincs megadva, a create_post() egyszerűen
+        # kihagyja a CTA-doboz widgetet annál a posztnál, ahelyett
+        # hogy hibával leállna (lásd build_elementor_data és
+        # _build_cta_shortcode docstringjét).
+        self._cta_shortcode_ids = {
+            "hu": secrets.get("CTA_SHORTCODE_ID_HU"),
+            "en": secrets.get("CTA_SHORTCODE_ID_EN"),
+            "es": secrets.get("CTA_SHORTCODE_ID_ES"),
+        }
 
         # (nyelv, kategórianév kisbetűsítve) -> kategória ID cache,
         # hogy egy futás alatt ne kérdezzük le ugyanazt többször.
@@ -294,6 +359,27 @@ class WordPressClient:
 
         return category_ids
 
+    def _build_cta_shortcode(self, nyelv):
+        """
+        Felépíti a szerzői CTA-doboz Dynific-rövidkódját
+        ("[INSERT_ELEMENTOR id=xxx]") AZ ADOTT NYELVHEZ tartozó
+        Elementor Saját sablon ID-ja alapján (lásd __init__ és
+        build_elementor_data "cta_shortcode" paraméterének
+        magyarázatát).
+
+        Ha az adott nyelvhez (még) nincs beállítva sablon ID a
+        secrets fájlban, None-t ad vissza — ez NEM hiba, a hívó
+        (create_post) ilyenkor egyszerűen kihagyja a CTA-doboz
+        widgetet ennél a posztnál.
+        """
+
+        template_id = self._cta_shortcode_ids.get(nyelv)
+
+        if not template_id:
+            return None
+
+        return f"[INSERT_ELEMENTOR id={template_id}]"
+
     def create_post(self, metadata, body_html):
         """
         Létrehozza (ütemezi) a posztot a WordPress oldalon.
@@ -335,7 +421,9 @@ class WordPressClient:
         kategóriák hozzárendelése.
         """
 
-        elementor_data = build_elementor_data(body_html)
+        cta_shortcode = self._build_cta_shortcode(metadata["nyelv"])
+
+        elementor_data = build_elementor_data(body_html, cta_shortcode)
 
         payload = {
             "title": metadata["cim"],

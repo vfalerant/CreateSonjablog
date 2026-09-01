@@ -213,16 +213,37 @@ def process_inline(element, style_map):
                 style_map
             )
 
-            style_info = get_element_style(
-                child,
-                style_map
-            )
+            # CSAK akkor csomagoljuk <strong>/<i> tagbe, ha a span-nek
+            # TÉNYLEGESEN van szövege. LibreOffice-ban előfordul, hogy
+            # egy szerző bekapcsol egy formázást (pl. félkövér), de
+            # nem gépel be semmit utána (vagy törli a szöveget, de a
+            # formázási jelölő ottmarad) — ez egy TELJESEN üres
+            # <text:span text:style-name="Strong_20_Emphasis" />
+            # elemet hagy a dokumentumban. Enélkül az ellenőrzés
+            # nélkül ez a "" szöveg apply_style-on átmenve
+            # "<strong></strong>"-vé válna — vagyis egy technikailag
+            # NEM ÜRES string, noha semmilyen látható tartalmat nem
+            # hordoz. Ez lentebb (process_paragraph) meghiúsítja az
+            # "üres bekezdés" felismerést: a bekezdés se "layout
+            # artifact"-ként, se szándékos üres sorként nem szűrődik
+            # ki, hanem egy rendes "p" blokk lesz "<strong></strong>"
+            # szöveggel — ha ez a törzsszöveg ELSŐ blokkja, a
+            # html_generator ebből épít egy teljesen üres <h2></h2>
+            # címsort, a VALÓDI cím pedig (a következő bekezdés) már
+            # csak egy sima, félkövér <p>-ként jelenik meg (élesben
+            # így járt a "Emily_24_20260824_ENG.odt" dokumentum).
+            if span_text:
 
-            span_text = apply_style(
-                span_text,
-                style_info["bold"],
-                style_info["italic"]
-            )
+                style_info = get_element_style(
+                    child,
+                    style_map
+                )
+
+                span_text = apply_style(
+                    span_text,
+                    style_info["bold"],
+                    style_info["italic"]
+                )
 
             result += span_text
 

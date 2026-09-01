@@ -85,6 +85,28 @@ bevezetésével — kiderült azonban, hogy továbbra is szükség van rá,
 csak más okból: nem a poszt egyetlen címeként, hanem egy, a
 posztcím ALATT megjelenő, a történetre jellemző alcímként.)*
 
+**HIBAKERESÉS — üres, de félkövér-jelölt bekezdés az elején (2026.08.23,
+"Emily_24_20260824_ENG.odt"):** a magyar ODT-ből helyesen generálódott
+a `<h2>`, de az angol fordításból üres `<h2></h2>` jött ki, a valódi
+cím pedig egy sima, félkövér `<p>`-ként jelent meg. Az ok: a törzsszöveg
+ELSŐ bekezdése a LibreOffice-ban technikailag NEM volt üres — egy
+`<text:span text:style-name="Strong_20_Emphasis" />` (egy tartalom
+nélküli, de félkövérre állított formázási jelölő) volt benne,
+feltehetően azért, mert a szerző bekapcsolta a félkövér stílust,
+mielőtt beírta volna a címet, de az adott sorba végül nem gépelt be
+semmit. Az `odt_reader.py` a span szövegét ELŐBB csomagolta
+`<strong>`/`<i>` tagbe (lásd `process_inline`), és csak UTÁNA
+ellenőrizte, hogy a bekezdés "üres-e" — így egy tartalmilag üres span
+"<strong></strong>"-vé vált, ami mint STRING már nem üres, tehát sem
+az "üres sor" jelölőt előállító logika, sem a felesleges
+(stílus nélküli) bekezdéseket kiszűrő `is_layout_artifact` nem kapta
+el. A JAVÍTÁS: a `process_inline` most már csak akkor csomagolja egy
+span szövegét formázó tagbe, ha a span-nek TÉNYLEGESEN van szövege
+(lásd a kódban lévő magyarázatot) — így egy ilyen, tartalom nélküli
+formázási jelölő újra helyesen üres bekezdésként viselkedik, és a
+dokumentum elejéről/végéről levágó logika (lásd `odt_reader.read_odt_document`)
+megfelelően eltünteti.
+
 ---
 
 ## 3. Projektstruktúra
@@ -150,6 +172,18 @@ CreateSonjaBlog/
 
 3. **Kategóriák előre léteznek** a WordPress oldalon — a program nem
    hoz létre új kategóriát, csak a meglévők ID-ját kérdezi le névből.
+
+4. **(Opcionális) Dynific Addons for Elementor plugin a szerzői
+   CTA-dobozhoz** (2026.09.01-i bővítés — lásd a 9. pont végén): ha
+   szeretnétek, hogy minden poszt alá automatikusan bekerüljön egy
+   Elementor Saját sablonként elmentett CTA-doboz, telepítsétek a
+   "Dynific Addons for Elementor" (korábbi nevén "AnyWhere
+   Elementor") pluginot, mentsétek el a CTA-dobozt Elementor Saját
+   sablonként, és a sablon ID-ját írjátok be a `.env/secrets` fájlba
+   (`CTA_SHORTCODE_ID_HU`/`_EN`/`_ES`, nyelvenként külön-külön). Ha
+   ezt a plugint nem telepítitek, vagy egy nyelvhez nem adtok meg
+   ID-t, a program egyszerűen nem tesz CTA-dobozt az adott nyelvű
+   posztokba — ez NEM hiba, minden más változatlanul működik.
 
 ---
 
@@ -278,7 +312,7 @@ a **kiemelt képet** fedi le, nem a törzsszövegbe ágyazott képeket
 
 ---
 
-## 9. Elementor-struktúra — ELDÖNTVE (egyszerűsített, egy widgetes megoldás)
+## 9. Elementor-struktúra — ELDÖNTVE (egyszerűsített, egy-két widgetes megoldás)
 
 A jelenlegi kézi munkafolyamatban minden poszt Elementor-felépítése két
 szekcióból, több oszlopból és kétféle widgetből (Text Editor + HTML)
@@ -288,10 +322,13 @@ is Elementorban maradó struktúrát használunk:
 ```
 Section
 └── Column
-    └── HTML widget (Elementor widgetType: "html")
-        └── tartalma: a bejegyzés törzsszövegének HTML-je
-            + alatta egy CSS-alapú (pl. flexbox) kétoszlopos <div>
-              a navigációs linkeknek (sorozat eleje / következő rész)
+    ├── HTML widget (Elementor widgetType: "html")
+    │   └── tartalma: a bejegyzés törzsszövegének HTML-je
+    │       + alatta egy CSS-alapú (pl. flexbox) kétoszlopos <div>
+    │         a navigációs linkeknek (sorozat eleje / következő rész)
+    └── Shortcode widget (Elementor widgetType: "shortcode") — CSAK
+        HA az adott nyelvhez be van állítva CTA-sablon ID (lásd a
+        pont végén, "Szerzői CTA-doboz")
 ```
 
 **Miért ez mellett döntöttünk:**
@@ -326,6 +363,44 @@ későbbi rész linkjének felépítéséhez. A gomb körüli FIX szövegek
 ("Új vagy?", "Folytatás", stb.) nyelvenkénti fordítása magában a
 `converter/navigation.py`-ban van (`NAV_TEXT_TEMPLATES`), nem a
 JSON-configban, mert ezek nem sorozat-specifikusak.
+
+**Sorozatonkénti szövegfelülírás (2026.08.23-i bővítés):** a fenti
+generikus, minden sorozatra érvényes szövegsablonok egyes
+sorozatoknál nyelvtanilag esetlenek lehetnek (pl. "Olvasd el Emily
+naplója sorozat részeit..." — a "sorozat" szó nem illik a "napló"
+utótaghoz). Emiatt a `config/sorozatok.json` egy adott sorozat egy
+adott nyelvi blokkjában az alábbi, MINDHÁROM mezőnél opcionális
+kulcsokkal felülírható a generikus szöveg:
+
+- `elso_resz_intro` — a "sorozat eleje" gomb bevezető mondatát
+  írja felül TELJES egészében (nem sablon, nincs benne
+  behelyettesítés — a szerző már a végleges, a sorozat nevéhez
+  illeszkedő mondatot adja meg).
+- `kovetkezo_resz_cimke_sablon` — a "következő rész" gomb
+  rész-számot tartalmazó feliratát (alapból pl. `"{n}. rész"`)
+  írja felül; a `{n}` helyére a program a rész sorszámát
+  helyettesíti be.
+- `kovetkezo_resz_szoveg` — a "következő rész" gomb alatti,
+  "Folytatás →" jellegű sort írja felül TELJES egészében (nem
+  sablon).
+
+Ha egy sorozat+nyelv blokkban ezek a kulcsok hiányoznak, a program
+az általános `NAV_TEXT_TEMPLATES`-beli szöveget használja
+változatlanul (ez marad pl. "A szalon" sorozat viselkedése).
+Példa (az "Emily naplója" sorozat magyar bejegyzése,
+`config/sorozatok.json`):
+
+```json
+"elso_resz_intro": "Olvasd Emily naplóját az elejétől, és ismerd meg, hogyan kezdődött minden →",
+"kovetkezo_resz_cimke_sablon": "{n}. bejegyzés →",
+"kovetkezo_resz_szoveg": "Folytasd Emily történetét a következő epizódban."
+```
+
+Az angol/spanyol nyelvű felülírásokat (ha a férj kéri őket) ugyanígy,
+a sorozat `en`/`es` blokkjába kell felvenni — a mechanizmus
+nyelvenként FÜGGETLENÜL működik, tehát egy sorozatnak lehet pl. csak
+magyar felülírása, és angol/spanyol nyelven a generikus szöveg
+marad érvényben, amíg valaki fel nem veszi azokat is.
 
 A metaadat-táblázatba két új, opcionális mező került: **"Sorozat
 neve"** és **"Rész sorszáma"** — ha ki vannak töltve, a program ez
@@ -377,6 +452,58 @@ felhasználásával) egy **későbbi lépésben** készül el, miután az alap
 poszt-generálás megbízhatóan működik éles használatban (2026.07.27:
 ez a feltétel gyakorlatilag teljesült — a poszt-frissítő funkció a
 következő tervezett fejlesztési lépés).
+
+**A jelölő tartalma — BŐVÍTVE (2026.08.23), amíg a poszt-frissítő
+funkció nincs kész:** a jelölő MOST MÁR nem csak a puszta, gépi
+azonosításra szolgáló komment (`series="..." part="..."`), hanem
+UGYANAZON a HTML-kommenten belül a KÖVETKEZŐ rész gombjának TELJES,
+kikommentezett kódját is tartalmazza (a jelenlegi rész sorszáma + 1
+alapján, `build_next_part_button_html()`-lel felépítve — lásd
+`converter/navigation.py` `build_next_part_marker()`). Így amíg a
+poszt-frissítő funkció el nem készül, a férj a WordPress
+szerkesztőben a korábbi rész posztjának HTML widgetjében megkeresi
+a jelölőt, és egyszerűen eltávolítja a `<!--`/`-->` komment-jeleket
+— nem kell a gomb HTML-jét kézzel begépelnie. A jelölő NYITÓ sora
+(a `series`/`part` azonosító) továbbra is a JELENLEGI poszt saját
+rész-számát tartalmazza (ez marad a jövőbeli automatikus
+frissítő funkció kulcsa); csak a komment BELSEJE (az előnézeti gomb)
+vonatkozik a következő részre. Ha a config/sorozatok.json-ból (még)
+nem építhető fel a következő rész gombja, a jelölő a régi, puszta
+azonosító formájában marad — ez csak egy kényelmi előnézet, hiánya
+nem hiba.
+
+**Szerzői CTA-doboz (2026.09.01-i bővítés) — ELDÖNTVE:** minden poszt
+törzsszövege (és a sorozat-navigáció) alá opcionálisan bekerülhet egy,
+a WordPress oldalon Elementor Saját sablonként elmentett CTA-doboz
+(pl. "iratkozz fel", "kövess a Facebookon", stb.). Ezt NEM a
+törzsszöveg HTML-jébe ágyazzuk bele, hanem egy MÁSODIK, önálló
+Elementor widgetként ugyanabba az oszlopba — mert gyakorlati teszttel
+igazolt tapasztalat, hogy az Elementor HTML widgetje SZÁNDÉKOSAN nem
+futtatja le a WordPress-shortcode-okat (sem a natív Elementor
+"[elementor-template]", sem a "Dynific Addons for Elementor" (korábbi
+nevén "AnyWhere Elementor") plugin "[INSERT_ELEMENTOR id=xxx]"
+rövidkódja nem dolgozódik fel benne) — ehhez az Elementor saját,
+dedikált **Shortcode widgetje** kell (`widgetType: "shortcode"`,
+`settings.shortcode`).
+
+A CTA-sablon ID-ja **nyelvenként** külön adható meg a `.env/secrets`
+fájlban (`CTA_SHORTCODE_ID_HU`, `CTA_SHORTCODE_ID_EN`,
+`CTA_SHORTCODE_ID_ES`) — ezek OPCIONÁLIS kulcsok (NEM szerepelnek a
+`wordpress/config.py` `REQUIRED_KEYS` listájában). Ha egy nyelvhez
+nincs megadva ID (vagy a Dynific plugin egyáltalán nincs telepítve),
+a `wordpress/wp_client.py` `WordPressClient._build_cta_shortcode()`
+egyszerűen `None`-t ad vissza, és a `build_elementor_data()` ilyenkor
+KIHAGYJA a Shortcode widgetet — a poszt a régi, egy-widgetes
+szerkezetével jön létre, ez NEM hiba. Ugyanaz a defenzív elv, mint a
+sorozat-navigációnál: egy hiányzó/opcionális konfiguráció miatt nem
+szabadna, hogy elszálljon a teljes poszt-létrehozás.
+
+**FONTOS KORLÁTOZÁS:** a CTA-doboz KIZÁRÓLAG a WordPress oldalon,
+publikálás/előnézet után válik láthatóvá — a GUI saját, helyi HTML
+előnézete (lásd 7. pont) ezt NEM jeleníti meg, mert a Shortcode widget
+csak a `wp_client.create_post()` hívásban, a WordPress-nek küldött
+`_elementor_data`-ban jön létre, a helyi `body_html`-nek (amit a GUI
+előnézete mutat) nem része.
 
 ---
 

@@ -385,17 +385,63 @@ class MainWindow(QMainWindow):
         # ha időközben hozzáadsz egy új sorozatot a
         # config/sorozatok.json fájlhoz, a programot ne kelljen
         # emiatt újraindítani
-        series_config = load_series_config()
+        #
+        # FONTOS (2026.07.28-i javítás): ha a config/sorozatok.json
+        # HIBÁS (pl. elgépelt JSON-szintaxis, hiányzó vessző), a
+        # json.load() kivételt dob — enélkül a try/except blokk
+        # nélkül ez a kivétel MEGSZAKÍTOTTA a teljes load_odt()
+        # függvényt PONTOSAN EZEN A PONTON, így minden UTÁNA
+        # következő rész (validáció, hibalista, HTML-előnézet)
+        # CSENDBEN üresen maradt — a felhasználó semmilyen
+        # hibaüzenetet nem látott, csak azt, hogy "nem történik
+        # semmi" a metaadat-előnézet után. Ezt most egy világos,
+        # a hibalistában megjelenő üzenetté alakítjuk, és a
+        # feldolgozás a TÖBBI részre (validáció, HTML-előnézet)
+        # ETTŐL FÜGGETLENÜL folytatódik — csak a sorozat-specifikus
+        # ellenőrzések/navigáció maradnak ki, amíg a config hibás.
+        sorozat_config_hiba = None
 
-        errors = validate(
-            metadata,
-            unrecognized_labels,
-            blocks,
-            table_found,
-            category_exists_fn=category_exists_fn,
-            media_exists_fn=media_exists_fn,
-            series_config=series_config
-        )
+        try:
+            series_config = load_series_config()
+
+        except Exception as e:
+            series_config = {}
+            sorozat_config_hiba = str(e)
+
+        # VÉDŐHÁLÓ (2026.07.28-i kiegészítés): a validate() hívás
+        # során hálózati kérések is futnak (kategória-/kép-
+        # ellenőrzés) — ha itt bármi VÁRATLAN hiba történne (pl.
+        # hálózati időtúllépés, a WordPress oldal elérhetetlen,
+        # stb.), ez korábban CSENDBEN megszakította a teljes
+        # load_odt() függvényt, és minden UTÁNA következő panel
+        # (hibalista, HTML-előnézet) érintetlenül/üresen maradt —
+        # anélkül, hogy a felhasználó bármit is látott volna a
+        # okról. Mostantól egy ilyen váratlan hiba is egyértelmű
+        # üzenetként jelenik meg a hibalistában, ahelyett hogy
+        # nyomtalanul elnyelné a program.
+        try:
+            errors = validate(
+                metadata,
+                unrecognized_labels,
+                blocks,
+                table_found,
+                category_exists_fn=category_exists_fn,
+                media_exists_fn=media_exists_fn,
+                series_config=series_config
+            )
+
+        except Exception as e:
+            errors = [
+                f"Váratlan hiba történt a validáció során: {e}"
+            ]
+
+        if sorozat_config_hiba is not None:
+            errors = [
+                f"A config/sorozatok.json fájl hibás, nem "
+                f"olvasható be (valószínűleg elgépelt JSON-"
+                f"szintaxis, pl. hiányzó vessző két sorozat "
+                f"bejegyzése között): {sorozat_config_hiba}"
+            ] + errors
 
         # ha a WordPress-kapcsolat maga hibás, azt is hozzávesszük
         # a hibalistához — enélkül a felhasználó azt hihetné, hogy

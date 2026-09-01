@@ -36,6 +36,21 @@ Magyarázat soronként:
                           HA FRISSÍTED AZ ELEMENTORT, EZT AZ ÉRTÉKET
                           IS FRISSÍTSD A SECRETS FÁJLBAN.
 
+2026.09.01-i bővítés — OPCIONÁLIS kulcsok (NINCSENEK a
+REQUIRED_KEYS-ben, tehát a hiányuk nem hiba):
+
+    CTA_SHORTCODE_ID_HU=11589
+    CTA_SHORTCODE_ID_EN=11612
+    CTA_SHORTCODE_ID_ES=...
+
+  Ezek a szerzői CTA-doboz Elementor Saját sablonjainak ID-ja,
+  nyelvenként — a Dynific Addons for Elementor (AnyWhere Elementor)
+  plugin "[INSERT_ELEMENTOR id=xxx]" rövidkódjához használja őket a
+  wordpress/wp_client.py (lásd ott build_elementor_data és
+  WordPressClient._build_cta_shortcode). Ha egy nyelv hiányzik
+  innen, az adott nyelvű posztokba egyszerűen nem kerül bele a
+  CTA-doboz widget, minden más változatlanul működik.
+
 - Az üres sorokat és a "#"-tal kezdődő sorokat (megjegyzés) a
   betöltő figyelmen kívül hagyja, hogy a fájlba lehessen írni
   saját emlékeztetőt is.

@@ -21,6 +21,15 @@ Két dolgot generálhat:
      a frissítő funkció CSAK ezt a programot generálta posztokat
      tudja módosítani (lásd a specifikáció 9. pontjának végét).
 
+     2026.08.23-i bővítés: amíg a poszt-frissítő funkció nem
+     készül el, a jelölő MOST MÁR nem csak a puszta azonosító
+     komment, hanem a jelenlegi rész-szám alapján előre kiszámítható
+     KÖVETKEZŐ rész gombjának TELJES, kikommentezett HTML-kódját is
+     tartalmazza (lásd build_next_part_marker) — így a férj kézzel,
+     a WordPress szerkesztőben egyszerű kikommentezéssel be tudja
+     illeszteni a gombot a korábbi rész posztjába, anélkül, hogy
+     neki kellene begépelnie a HTML-t.
+
 HA A BEJEGYZÉS NEM RÉSZE SEMMILYEN SOROZATNAK (a "Sorozat neve" mező
 üresen maradt az ODT táblázatban), ez a modul semmit nem csinál —
 build_navigation_html() ekkor üres stringet ad vissza, és a
@@ -44,21 +53,26 @@ DEFAULT_SERIES_CONFIG_PATH = os.path.join(
     "sorozatok.json"
 )
 
-# A láthatatlan jelölő SABLONJA. A {series} és {part} helyekre a
-# JELENLEGI poszt sorozatneve és rész-sorszáma kerül — ez teszi
-# "önazonosítóvá" a jelölőt: a jövőbeli frissítő funkció ebből
+# A láthatatlan jelölő NYITÓ sorának SABLONJA. A {series} és {part}
+# helyekre a JELENLEGI poszt sorozatneve és rész-sorszáma kerül — ez
+# teszi "önazonosítóvá" a jelölőt: a jövőbeli frissítő funkció ebből
 # tudja majd megkeresni, hogy MELYIK sorozat MELYIK részéhez
 # tartozik ez a placeholder, hálózati/adatbázis-lekérdezés nélkül,
 # pusztán a poszt tartalmát átvizsgálva.
+#
+# SZÁNDÉKOSAN nincs benne a záró "-->" — a build_next_part_marker()
+# a nyitó sor UTÁN, MÉG a lezárás ELŐTT szúrja be a kikommentezett
+# előnézeti gomb HTML-jét (lásd ott), hogy az egész (azonosító +
+# gomb-előnézet) EGYETLEN HTML-kommentben maradjon.
 #
 # HA EZT A SABLONT VALAHA MÓDOSÍTOD, a már korábban legenerált (és
 # a WordPress-en már élő) posztokban lévő RÉGI jelölők nem fognak
 # egyezni az új mintával — a poszt-frissítő funkciónak (amikor
 # elkészül) ezzel számolnia kell, vagy egy migrációt kell futtatni
 # a régi posztokon.
-MARKER_TEMPLATE = (
+MARKER_OPEN_TEMPLATE = (
     '<!-- SONJABLOG:NEXT_PART_PLACEHOLDER '
-    'series="{series}" part="{part}" -->'
+    'series="{series}" part="{part}"'
 )
 
 # A "sorozat eleje" gomb KÖRÜLI, FIX szövegek nyelvenkénti
@@ -67,6 +81,17 @@ MARKER_TEMPLATE = (
 # vegyes nyelvű: egy angol poszt alatt nem jelenhet meg magyar
 # mondat, még akkor sem, ha a linkelt cím (elso_resz_cim) már eleve
 # a megfelelő nyelven van a config/sorozatok.json-ban.
+#
+# EZEK CSAK az ÁLTALÁNOS, minden sorozatra érvényes ALAPÉRTELMEZÉST
+# adják (2026.08.23-i bővítés). Ha egy adott sorozathoz (pl. mert a
+# generikus "sorozat részeit"/"rész" megfogalmazás nyelvtanilag nem
+# illik rá, mint "Emily naplója" esetén) egyedi szöveg kell, a
+# config/sorozatok.json adott sorozat+nyelv blokkjában az alábbi
+# opcionális kulcsokkal FELÜLÍRHATÓ (lásd build_series_start_html és
+# build_next_part_button_html):
+#   - "elso_resz_intro"             -> felülírja a teljes "intro" sort
+#   - "kovetkezo_resz_cimke_sablon" -> felülírja a "resz_cimke" sablont
+#   - "kovetkezo_resz_szoveg"       -> felülírja a "folytatas" sort
 #
 # HA ÚJ NYELV KERÜL A BLOGRA, ITT kell felvenni egy új bejegyzést —
 # ÉS bővíteni a metadata_parser.VALID_NYELVEK listát is.
@@ -83,7 +108,13 @@ NAV_TEXT_TEMPLATES = {
         # a "következő rész" gombhoz (2026.07.27-i bővítés):
         # "{n}. rész" -> pl. "14. rész"
         "resz_cimke": "{n}. rész",
-        "folytatas": "Folytatás",
+        # 2026.08.23-tól a nyíl MÁR ITT, a szöveg részeként szerepel
+        # (korábban a kódban volt automatikusan hozzáfűzve) — azért
+        # került ide, hogy egy sorozat-specifikus felülírás (lásd
+        # fent) szabadon eldönthesse, kell-e egyáltalán nyíl a sor
+        # végére, a kódnak ne kelljen ezt automatikusan
+        # hozzáragasztania minden esetben.
+        "folytatas": "Folytatás →",
     },
     "en": {
         "new_here": "New here?",
@@ -96,16 +127,16 @@ NAV_TEXT_TEMPLATES = {
             "character\u2019s story \u2192"
         ),
         "resz_cimke": "Part {n}",
-        "folytatas": "Continue",
+        "folytatas": "Continue →",
     },
     "es": {
-        "new_here": "\u00bfEres nuevo?",
+        "new_here": "¿Eres nuevo?",
         "intro": (
             "Empieza desde el principio y descubre la historia de "
             "cada personaje \u2192"
         ),
         "resz_cimke": "Parte {n}",
-        "folytatas": "Continuar",
+        "folytatas": "Continuar →",
     },
 }
 
@@ -201,7 +232,22 @@ def build_series_start_html(series_name, nyelv, series_config):
 
     szoveg = NAV_TEXT_TEMPLATES[nyelv]
 
-    intro = szoveg["intro"].format(series=megjelenitett_nev)
+    # 2026.08.23-i bővítés: ha a config/sorozatok.json-ban ehhez a
+    # sorozat+nyelv archoz meg van adva egyedi "elso_resz_intro", azt
+    # HASZNÁLJUK VÁLTOZTATÁS NÉLKÜL (a szerző már a végleges, a
+    # sorozat nevéhez nyelvtanilag illeszkedő mondatot írta meg —
+    # nincs mit .format()-olni rajta). Ha nincs megadva, marad a
+    # generikus sablon, a megjelenitett_nev behelyettesítésével.
+    # Erre azért volt szükség (lásd "Emily naplója"), mert a
+    # generikus "Olvasd el {series} sorozat részeit..." forma egyes
+    # sorozatneveknél nyelvtanilag esetlen ("Olvasd el Emily naplója
+    # sorozat részeit...").
+    intro_override = info.get("elso_resz_intro")
+
+    if intro_override:
+        intro = intro_override
+    else:
+        intro = szoveg["intro"].format(series=megjelenitett_nev)
 
     # ez a HTML-sablon a te eredeti, kézzel írt gombod alapján
     # készült (lásd a specifikáció 9. pontját) — a "blog-button"
@@ -246,6 +292,20 @@ def build_next_part_button_html(series_name, nyelv, resz_szam, series_config):
         (nyelvspecifikus) neve + a rész-szám + egy "Folytatás"/
         "Continue"/"Continuar" felirat.
 
+    2026.08.23-i bővítés: mind a rész-számot tartalmazó felirat
+    ("resz_cimke", pl. "14. rész"), mind az alatta lévő "folytatas"
+    sor ("Folytatás →") FELÜLÍRHATÓ sorozatonként, a
+    config/sorozatok.json adott sorozat+nyelv blokkjában a
+    "kovetkezo_resz_cimke_sablon" (a {n} helyre a rész-szám kerül,
+    pl. "{n}. bejegyzés →") és a "kovetkezo_resz_szoveg" (VÉGLEGES,
+    nem sablon jellegű szöveg, semmi nem kerül behelyettesítésre
+    bele) kulcsokkal. Ha ezek hiányoznak, marad az általános
+    NAV_TEXT_TEMPLATES-beli alapértelmezés. Erre azért volt szükség
+    (lásd "Emily naplója"), mert ott a rész-szám mellett nem "rész",
+    hanem "bejegyzés" szerepel, és a nyíl (→) is máshova kerül (a
+    felirat végére, nem a "folytatas" sor végére) — ezt a generikus
+    sablon szerkezete nem tudja lefedni.
+
     Hibát dob (ValueError) ugyanazon esetekben, mint
     build_series_start_html (ismeretlen sorozat, vagy ismert
     sorozat de a nyelv hiányzik belőle).
@@ -272,27 +332,70 @@ def build_next_part_button_html(series_name, nyelv, resz_szam, series_config):
 
     szoveg = NAV_TEXT_TEMPLATES[nyelv]
 
-    resz_cimke = szoveg["resz_cimke"].format(n=resz_szam)
+    # sorozat-specifikus felulirasok, lasd a docstringet fent es a
+    # NAV_TEXT_TEMPLATES tetejen levo magyarazatot -- ha nincsenek
+    # megadva a config/sorozatok.json-ban, az altalanos sablonra
+    # esunk vissza
+    cimke_sablon = info.get("kovetkezo_resz_cimke_sablon", szoveg["resz_cimke"])
+    resz_cimke = cimke_sablon.format(n=resz_szam)
+
+    folytatas_szoveg = info.get("kovetkezo_resz_szoveg", szoveg["folytatas"])
 
     return (
         f'<a class="blog-button" href="{url}">\n'
         f'<strong>{megjelenitett_nev}<br>{resz_cimke}</strong>\n'
         f'<br>\n'
-        f'{szoveg["folytatas"]} \u2192\n'
+        f'{folytatas_szoveg}\n'
         f'</a>'
     )
 
 
-def build_next_part_marker(series_name, part_number):
+def build_next_part_marker(series_name, part_number, nyelv, series_config):
     """
     Felépíti a láthatatlan jelölőt (HTML comment) — lásd a modul
-    tetején lévő MARKER_TEMPLATE magyarázatát.
+    tetején lévő MARKER_OPEN_TEMPLATE magyarázatát.
+
+    2026.08.23-i bővítés: a jelölő MÁR NEM CSAK a puszta, gépi
+    azonosításra szolgáló nyitó sort tartalmazza, hanem — amennyiben
+    a config/sorozatok.json-ból ki tudjuk számítani — a KÖVETKEZŐ
+    rész (part_number + 1) gombjának TELJES, kikommentezett HTML-
+    kódját is, UGYANAZON a kommenten belül. Ez azért hasznos MÁR
+    MOST, a poszt-frissítő funkció elkészülte ELŐTT is: amikor a
+    következő rész ténylegesen megjelenik, a korábbi rész posztjában
+    (a WordPress szerkesztőben) elég a jelölőt megkeresni és a
+    komment jeleit (<!-- / -->) eltávolítani — nem kell a gomb
+    HTML-jét kézzel begépelni.
+
+    A jelölő NYITÓ sora (series="..." part="...") TOVÁBBRA IS a
+    JELENLEGI poszt saját rész-számát azonosítja (nem a következőét)
+    — ez marad a jövőbeli automatikus frissítő funkció "kulcsa"
+    (lásd a modul tetején lévő magyarázatot); csak a KOMMENT
+    TARTALMA (az előnézeti gomb) vonatkozik a következő részre.
+
+    Ha a config/sorozatok.json-ból (még) nem lehet felépíteni a
+    következő rész gombját (pl. mert a sorozat vagy a nyelv hiányzik
+    belőle — ezt a validators.py rendesen csak az AKTUÁLIS részre
+    ellenőrzi, a KÖVETKEZŐre nem tudja, hiszen az még nem létezik),
+    egyszerűen a régi, puszta azonosító jelölőt adjuk vissza —
+    ez csak egy kényelmi előnézet, a hiánya nem hiba.
     """
 
-    return MARKER_TEMPLATE.format(
+    marker_open = MARKER_OPEN_TEMPLATE.format(
         series=series_name,
         part=part_number
     )
+
+    try:
+        preview_button_html = build_next_part_button_html(
+            series_name,
+            nyelv,
+            part_number + 1,
+            series_config
+        )
+    except ValueError:
+        return f'{marker_open} -->'
+
+    return f'{marker_open}\n{preview_button_html}\n-->'
 
 
 def build_navigation_html(metadata, series_config):
@@ -365,7 +468,9 @@ def build_navigation_html(metadata, series_config):
     pieces.append(
         build_next_part_marker(
             series_name,
-            part_number
+            part_number,
+            nyelv,
+            series_config
         )
     )
 
