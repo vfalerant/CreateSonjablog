@@ -93,6 +93,16 @@ MARKER_OPEN_TEMPLATE = (
 #   - "kovetkezo_resz_cimke_sablon" -> felülírja a "resz_cimke" sablont
 #   - "kovetkezo_resz_szoveg"       -> felülírja a "folytatas" sort
 #
+# (2026.09.12-i bővítés: egy TOVÁBBI, hasonló elvű, de NEM a
+# navigációs gombokhoz, hanem a RankMath SEO leírás mezőjéhez
+# tartozó opcionális kulcs is idekerülhet ugyanezekbe a sorozat+
+# nyelv blokkokba — lásd build_meta_description_suffix() lentebb és
+# a specifikáció 8.6 pontját:
+#   - "meta_description_sablon"     -> a SEO snippet VÉGÉRE fűzendő,
+#                                       sorozat-specifikus mondat,
+#                                       {n} helyére a rész sorszáma
+#                                       kerül)
+#
 # HA ÚJ NYELV KERÜL A BLOGRA, ITT kell felvenni egy új bejegyzést —
 # ÉS bővíteni a metadata_parser.VALID_NYELVEK listát is.
 NAV_TEXT_TEMPLATES = {
@@ -558,3 +568,64 @@ def build_navigation_html(metadata, series_config):
         f'{inner_html}\n'
         f'</div>'
     )
+
+
+def build_meta_description_suffix(metadata, series_config):
+    """
+    Felépíti a RankMath SEO leírás (rank_math_description) mező
+    VÉGÉRE fűzendő, sorozat- és nyelv-specifikus, figyelemfelhívó
+    mondatot (2026.09.12-i bővítés — lásd a specifikáció 8.6
+    pontját, "Sonja Blonde SEO strategy" dokumentum, "Meta
+    Description Optimization" feladat).
+
+    Bár ez NEM a navigációs gombokhoz tartozik, IDE, ebbe a modulba
+    került, mert UGYANAZT a config/sorozatok.json-t, UGYANAZZAL a
+    "sorozat neve + nyelv -> adatok" felépítéssel használja, mint a
+    build_series_start_html()/build_next_part_button_html() — nem
+    indokolt emiatt egy külön modult nyitni.
+
+    CSAK akkor ad vissza NEM ÜRES szöveget, ha MINDHÁROM feltétel
+    teljesül:
+      1. a bejegyzés sorozat része (a "Sorozat neve" ÉS a "Rész
+         sorszáma" mező is ki van töltve — validators.py ezt már
+         garantálja, ha egyáltalán eljutottunk idáig, DE ide
+         validáció NÉLKÜL is hívható, ezért itt is megnézzük),
+      2. a sorozat ISMERT a config/sorozatok.json-ban, az ADOTT
+         nyelven,
+      3. ehhez a sorozat+nyelv archoz meg van adva a "meta_description_sablon"
+         opcionális kulcs (lásd a NAV_TEXT_TEMPLATES feletti
+         magyarázatot).
+
+    Ha BÁRMELYIK feltétel hiányzik, ÜRES stringet ad vissza — ez NEM
+    hiba (nem dob ValueError-t, ELLENTÉTBEN a navigációs gombok
+    build_*_html() függvényeivel), mert ez a mező csak egy OPCIONÁLIS
+    SEO-kiegészítés: egy sorozat pontosan úgy publikálható enélkül
+    is, mint eddig, csak a SEO leírás nem kap sorozat-specifikus
+    záró mondatot. A hívó (wordpress/wp_client.py create_post())
+    ilyenkor egyszerűen a sima "SEO snippet" szöveget küldi tovább,
+    kiegészítés nélkül.
+    """
+
+    series_name = metadata.get("sorozat_nev", "")
+    part_number = metadata.get("resz_szam")
+
+    if not series_name or part_number is None:
+        return ""
+
+    sorozat_nyelvek = series_config.get(series_name)
+
+    if sorozat_nyelvek is None:
+        return ""
+
+    nyelv = metadata.get("nyelv", "")
+    info = sorozat_nyelvek.get(nyelv)
+
+    if info is None:
+        return ""
+
+    sablon = info.get("meta_description_sablon")
+
+    if not sablon:
+        return ""
+
+    return sablon.format(n=part_number)

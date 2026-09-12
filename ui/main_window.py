@@ -42,7 +42,8 @@ from converter.validators import validate
 from converter.html_generator import generate_html
 from converter.navigation import (
     load_series_config,
-    build_navigation_html
+    build_navigation_html,
+    build_meta_description_suffix
 )
 
 from wordpress.config import load_secrets
@@ -84,6 +85,14 @@ class MainWindow(QMainWindow):
         self.current_metadata = None
         self.current_blocks = None
         self.current_errors = []
+
+        # a legutóbb betöltött sorozat-config (lásd load_odt) — a
+        # create_post() gomb-eseménykezelőnek is szüksége van rá a
+        # RankMath SEO leírás sorozat-specifikus kiegészítéséhez
+        # (lásd converter.navigation.build_meta_description_suffix,
+        # 2026.09.12-i bővítés), enélkül a gomb megnyomásakor újra
+        # be kellene olvasnia a config/sorozatok.json fájlt
+        self.current_series_config = {}
 
         # A WordPress-kapcsolatot MÁR AZ INDULÁSKOR megpróbáljuk
         # felépíteni (nem csak a "Poszt létrehozása" gomb
@@ -408,6 +417,11 @@ class MainWindow(QMainWindow):
             series_config = {}
             sorozat_config_hiba = str(e)
 
+        # lásd az __init__-ben lévő magyarázatot: a create_post()
+        # gomb-eseménykezelőnek is szüksége van erre, a RankMath SEO
+        # leírás sorozat-specifikus kiegészítéséhez
+        self.current_series_config = series_config
+
         # VÉDŐHÁLÓ (2026.07.28-i kiegészítés): a validate() hívás
         # során hálózati kérések is futnak (kategória-/kép-
         # ellenőrzés) — ha itt bármi VÁRATLAN hiba történne (pl.
@@ -577,10 +591,25 @@ class MainWindow(QMainWindow):
 
         body_html = self.html_edit.toPlainText()
 
+        # a RankMath SEO leírás sorozat-specifikus kiegészítése
+        # (2026.09.12-i bővítés, lásd converter.navigation.
+        # build_meta_description_suffix és wordpress.wp_client.
+        # WordPressClient.create_post "meta_description_suffix"
+        # paraméterének magyarázatát) — SZÁNDÉKOSAN itt, a GUI-ban
+        # állítjuk elő, NEM a wp_client.py-ban, ugyanúgy, ahogy a
+        # sorozat-navigációs HTML-t is itt fűztük a body_html-hez
+        # a load_odt()-ban: a wp_client modul nem tud semmit a
+        # config/sorozatok.json-ról.
+        meta_description_suffix = build_meta_description_suffix(
+            self.current_metadata,
+            self.current_series_config
+        )
+
         try:
             result = self.wp_client.create_post(
                 self.current_metadata,
-                body_html
+                body_html,
+                meta_description_suffix
             )
 
         except Exception as e:

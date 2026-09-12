@@ -310,6 +310,54 @@ validációs hiba ("Nincs ilyen ID-jű kép a médiatárban: ..."). Ez csak
 a **kiemelt képet** fedi le, nem a törzsszövegbe ágyazott képeket
 (ilyenre jelenleg nincs igény).
 
+**8.6 RankMath Title és Description összeállítása — ELDÖNTVE
+(2026.09.12-i bővítés, "Sonja Blonde SEO strategy" dokumentum, "Meta
+Description Optimization" feladat)**
+
+A program mostantól automatikusan felépíti a RankMath **Title**
+mezőjét (`rank_math_title`), a következő formában:
+
+```
+{ELSŐ SEO kulcsszó}: {epizód cím} %sep% %sitename%
+```
+
+Ahol az "epizód cím" a törzsszöveg első bekezdéséből automatikusan
+képzett `<h2>` szövege (lásd 2.2 pont), formázó tagek nélkül. A
+`%sep%` és `%sitename%` a RankMath SAJÁT, beépített template-
+szintaxisa (elválasztó karakter, ill. az oldal neve) — ezt
+SZÁNDÉKOSAN szó szerint, változatlanul írjuk a mezőbe, a RankMath
+saját maga helyettesíti be őket megjelenítéskor. Ha nincs SEO
+kulcsszó VAGY nincs `<h2>` a törzsszövegben, a mező egyszerűen
+kimarad a payloadból, és RankMath a saját, globális title-sablonjára
+esik vissza (ez NEM hiba).
+
+A RankMath **Description** mezőjéhez (`rank_math_description`) a "SEO
+snippet" szöveg VÉGÉRE, szóközzel elválasztva, opcionálisan bekerül
+egy **sorozat- és nyelv-specifikus** figyelemfelhívó mondat, amiben
+`{n}` helyére a "Rész sorszáma" kerül. Ez a mondat a
+`config/sorozatok.json` adott sorozat+nyelv blokkjában, az opcionális
+`meta_description_sablon` kulcsban adható meg (lásd
+`converter/navigation.py` `build_meta_description_suffix()`) —
+UGYANAZZAL az elvvel, mint a navigációs gombok szövegfelülírásai
+(lásd a 9. pont "Sorozatonkénti szövegfelülírás" alpontját): ha egy
+sorozathoz (vagy egy adott nyelvéhez) nincs megadva ilyen sablon, a
+leírás egyszerűen a sima SEO snippet marad, kiegészítés nélkül — ez
+NEM hiba, csak hiányzó, opcionális konfiguráció. Nem sorozat-részhez
+tartozó (önálló) posztoknál ez a kiegészítés értelemszerűen sosem
+kerül bele.
+
+Jelenleg (2026.09.12) az "A szalon" sorozathoz van beállítva
+mindhárom nyelven:
+
+```json
+"meta_description_sablon": "Olvasd el A szalon {n}. részét a humoros szépségszalon-sorozatban!"   // hu
+"meta_description_sablon": "Read Part {n} of The Salon, a humorous beauty salon series!"            // en
+"meta_description_sablon": "¡Lee la Parte {n} de El salón, una serie humorística de salón de belleza!"  // es
+```
+
+Más sorozatokhoz (pl. "Emily naplója") egyelőre NINCS beállítva —
+ott a leírás a sablon-kiegészítés nélkül, változatlanul kerül ki.
+
 ---
 
 ## 9. Elementor-struktúra — ELDÖNTVE (egyszerűsített, egy-két widgetes megoldás)

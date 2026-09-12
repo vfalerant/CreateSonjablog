@@ -9,7 +9,8 @@
       "resz_url_sablon": "/a-szalon-{resz}-resz/",
       "elso_resz_intro": "Olvasd el A szalon sorozat részeit az elejétől, és ismerd meg, minden szereplő történetét →",
       "kovetkezo_resz_cimke_sablon": "{n}. rész",
-      "kovetkezo_resz_szoveg": "Folytatás →"
+      "kovetkezo_resz_szoveg": "Folytatás →",
+      "meta_description_sablon": "Olvasd el A szalon {n}. részét a humoros szépségszalon-sorozatban!"
     },
     "en": {
       "megjelenitett_nev": "The Salon",
@@ -18,7 +19,8 @@
       "resz_url_sablon": "/the-salon-part-{resz}/",
       "elso_resz_intro": "Start from the beginning and discover every character’s story →",
       "kovetkezo_resz_cimke_sablon": "Part {n}",
-      "kovetkezo_resz_szoveg": "Continue →"
+      "kovetkezo_resz_szoveg": "Continue →",
+      "meta_description_sablon": "Read Part {n} of The Salon, a humorous beauty salon series!"
     },
     "es": {
       "megjelenitett_nev": "El salón",
@@ -27,7 +29,8 @@
       "resz_url_sablon": "/el-salon-parte-{resz}/",
       "elso_resz_intro": "Empieza desde el principio y descubre la historia de cada personaje →",
       "kovetkezo_resz_cimke_sablon": "Parte {n}",
-      "kovetkezo_resz_szoveg": "Continuar →"
+      "kovetkezo_resz_szoveg": "Continuar →",
+      "meta_description_sablon": "¡Lee la Parte {n} de El salón, una serie humorística de salón de belleza!"
     }
   },
   "Emily naplója": {
@@ -38,7 +41,8 @@
       "resz_url_sablon": "/emily-naploja-{resz}-bejegyzes/",
       "elso_resz_intro": "Olvasd Emily naplóját az elejétől, és ismerd meg, hogyan kezdődött minden →",
       "kovetkezo_resz_cimke_sablon": "{n}. bejegyzés →",
-      "kovetkezo_resz_szoveg": "Folytasd Emily történetét a következő epizódban."
+      "kovetkezo_resz_szoveg": "Folytasd Emily történetét a következő epizódban.",
+      "meta_description_sablon": "Olvasd el a napló {n}. részét a romantikus történetsorozatban!"
     },
     "en": {
       "megjelenitett_nev": "Emily’s Diary",
@@ -47,7 +51,8 @@
       "resz_url_sablon": "/emilys-diary-entry-{resz}/",
       "elso_resz_intro": "Start reading Emily’s diary from the beginning and discover how everything started →",
       "kovetkezo_resz_cimke_sablon": "Entry {n} →",
-      "kovetkezo_resz_szoveg": "Continue Emily’s story in the next entry."
+      "kovetkezo_resz_szoveg": "Continue Emily’s story in the next entry.",
+      "meta_description_sablon": "Read Entry {n} of the diary, a romantic short story series!"
     },
     "es": {
       "megjelenitett_nev": "El diario de Emily",
@@ -56,7 +61,8 @@
       "resz_url_sablon": "/el-diario-de-emily-entrada-{resz}/",
       "elso_resz_intro": "Empieza a leer el diario de Emily desde el principio y descubre cómo comenzó todo →",
       "kovetkezo_resz_cimke_sablon": "Entrada {n} →",
-      "kovetkezo_resz_szoveg": "Sigue la historia de Emily en la siguiente entrada."
+      "kovetkezo_resz_szoveg": "Sigue la historia de Emily en la siguiente entrada.",
+      "meta_description_sablon": "¡Lee la entrada {n} del diario, una historia romántica por entregas!"
     }
   }
 }

@@ -21,7 +21,7 @@ FONTOS ELŐFELTÉTELEK a WordPress oldalon (lásd a specifikáció 4.
 pontját is):
   - Application Password létrehozva (WP admin → Felhasználók →
     Profil → Application Passwords)
-  - a RankMath SEO meta mezők (rank_math_description,
+  - a RankMath SEO meta mezők (rank_math_title, rank_math_description,
     rank_math_focus_keyword, rank_math_primary_category)
     regisztrálva vannak show_in_rest=true kapcsolóval
     (functions.php / mu-plugin) — enélkül a WordPress egyszerűen
@@ -40,10 +40,22 @@ tiszta adatok érkeznek.
 """
 
 import json
+import re
 import uuid
 
 import requests
 from requests.auth import HTTPBasicAuth
+
+
+# Az ELSŐ <h2>...</h2> címsor szövegét keresi meg egy HTML-
+# stringben — ez a törzsszöveg "epizód címe" (lásd
+# _extract_episode_title lentebb). A re.DOTALL azért kell, mert a
+# html_generator által generált HTML-ben a címsor tartalma
+# elméletileg (bár ritkán) több sorra is törhet.
+_H2_PATTERN = re.compile(
+    r"<h2[^>]*>(.*?)</h2>",
+    re.DOTALL | re.IGNORECASE
+)
 
 
 def _new_element_id():
@@ -61,6 +73,70 @@ def _new_element_id():
     """
 
     return uuid.uuid4().hex[:7]
+
+
+def _extract_episode_title(body_html):
+    """
+    Kiszedi a body_html-ben szereplő ELSŐ <h2>...</h2> címsor
+    szövegét, formázó tagek (<strong>/<i>) nélkül — ez a törzsszöveg
+    "epizód címe" (lásd converter/html_generator.py, ahol a
+    törzsszöveg első bekezdése automatikusan ide alakul), amit a
+    RankMath Title mezőjéhez használunk (lásd build_rank_math_title
+    és create_post() — 2026.09.12-i bővítés, "Sonja Blonde SEO
+    strategy" dokumentum, "Meta Description Optimization" feladat).
+
+    SZÁNDÉKOSAN közvetlenül a body_html-BŐL olvassuk ki, NEM a
+    converter modulok által visszaadott, "eredeti" blocks listából —
+    a "Poszt létrehozása" gomb ugyanis a GUI HTML-szerkesztőjének
+    AKTUÁLIS, esetleg a szerző által kézzel módosított tartalmát
+    küldi el (lásd ui/main_window.py create_post()), és a RankMath
+    title-nek a TÉNYLEGESEN publikált címet kell tükröznie, nem egy
+    esetleg már elavult, a kézi szerkesztés előtti verziót.
+
+    Ha nincs <h2> a HTML-ben, üres stringet ad vissza — ez NEM hiba,
+    csak azt jelenti, hogy build_rank_math_title() sem tud majd
+    teljes title-t összeállítani (lásd ott).
+    """
+
+    match = _H2_PATTERN.search(body_html)
+
+    if not match:
+        return ""
+
+    title = match.group(1)
+    title = re.sub(r"</?strong>", "", title)
+    title = re.sub(r"</?i>", "", title)
+
+    return title.strip()
+
+
+def build_rank_math_title(seo_kulcsszavak, episode_title):
+    """
+    Felépíti a RankMath Title mező tartalmát (2026.09.12-i bővítés —
+    lásd a specifikáció 8.6 pontját, "Sonja Blonde SEO strategy"
+    dokumentum, "Meta Description Optimization" feladat):
+
+        "{ELSŐ SEO kulcsszó}: {epizód cím} %sep% %sitename%"
+
+    A "%sep%" és "%sitename%" a RankMath SAJÁT, beépített template-
+    szintaxisa (a beállított elválasztó karakter, illetve az oldal
+    neve) — ezt SZÁNDÉKOSAN szó szerint, változatlanul írjuk bele a
+    mezőbe, a RankMath saját maga helyettesíti be a tényleges
+    értékeket megjelenítéskor; NEM a mi feladatunk ezt feloldani.
+
+    Ha nincs SEO kulcsszó VAGY nincs epizód cím (lásd
+    _extract_episode_title), üres stringet ad vissza — ilyenkor a
+    hívó (create_post) egyszerűen KIHAGYJA a "rank_math_title"
+    kulcsot a payloadból, és a RankMath a saját, globális title-
+    sablonját használja (ez NEM hiba, csak hiányzó bemenet).
+    """
+
+    if not seo_kulcsszavak or not episode_title:
+        return ""
+
+    first_keyword = seo_kulcsszavak[0]
+
+    return f"{first_keyword}: {episode_title} %sep% %sitename%"
 
 
 def build_elementor_data(html_content, cta_shortcode=None):
@@ -380,7 +456,7 @@ class WordPressClient:
 
         return f"[INSERT_ELEMENTOR id={template_id}]"
 
-    def create_post(self, metadata, body_html):
+    def create_post(self, metadata, body_html, meta_description_suffix=""):
         """
         Létrehozza (ütemezi) a posztot a WordPress oldalon.
 
@@ -394,6 +470,20 @@ class WordPressClient:
                      kimenete: a törzsszöveg HTML-je, amit az
                      Elementor HTML widgetbe (és tartalék jelleggel
                      a sima "content" mezőbe is) teszünk.
+          meta_description_suffix — OPCIONÁLIS, a RankMath SEO leírás
+                     (rank_math_description) VÉGÉRE fűzendő,
+                     sorozat-specifikus mondat (2026.09.12-i bővítés
+                     — lásd a specifikáció 8.6 pontját). A HÍVÓ
+                     (ui/main_window.py) állítja elő a
+                     converter.navigation.build_meta_description_suffix()
+                     segítségével, MIELŐTT meghívja ezt a függvényt —
+                     ez a modul (wp_client.py) SZÁNDÉKOSAN nem tud
+                     semmit a config/sorozatok.json-ról, ugyanúgy,
+                     ahogy a sorozat-navigációs HTML-t is a hívó
+                     fűzi a body_html-hez, még ELŐTTE. Üres string
+                     esetén a rank_math_description egyszerűen a
+                     sima "SEO snippet" szöveg marad, kiegészítés
+                     nélkül.
 
         Visszaadja a WordPress API válaszát (dict), amiben többek
         közt benne van a létrehozott poszt ID-ja és szerkesztői
@@ -424,6 +514,33 @@ class WordPressClient:
         cta_shortcode = self._build_cta_shortcode(metadata["nyelv"])
 
         elementor_data = build_elementor_data(body_html, cta_shortcode)
+
+        # RankMath Title (2026.09.12-i bővítés) — lásd
+        # build_rank_math_title() és _extract_episode_title()
+        # docstringjét fent. Ha nem sikerül összeállítani (nincs SEO
+        # kulcsszó vagy nincs <h2> a body_html-ben), üres string lesz
+        # belőle, és a "meta" dict összeállításánál lentebb
+        # EGYSZERŰEN KIHAGYJUK a kulcsot — RankMath ilyenkor a saját
+        # globális title-sablonjára esik vissza.
+        rank_math_title = build_rank_math_title(
+            metadata.get("seo_kulcsszavak", []),
+            _extract_episode_title(body_html)
+        )
+
+        # RankMath Description — a sima "SEO snippet" szöveg, opcionálisan
+        # kiegészítve a hívó által már előre elkészített, sorozat-
+        # specifikus záró mondattal (lásd a "meta_description_suffix"
+        # paraméter magyarázatát fent). Ha nincs kiegészítés, a
+        # leírás pontosan ugyanaz marad, mint eddig.
+        rank_math_description = metadata.get("seo_snippet", "")
+
+        if meta_description_suffix:
+
+            rank_math_description = (
+                f"{rank_math_description} {meta_description_suffix}"
+                if rank_math_description
+                else meta_description_suffix
+            )
 
         payload = {
             "title": metadata["cim"],
@@ -471,9 +588,7 @@ class WordPressClient:
                 # elmentésre, ha a WordPress oldalon regisztrálva
                 # vannak show_in_rest=true-val (lásd a modul elején
                 # lévő magyarázatot és a specifikáció 4. pontját)
-                "rank_math_description": metadata.get(
-                    "seo_snippet", ""
-                ),
+                "rank_math_description": rank_math_description,
                 "rank_math_focus_keyword": ", ".join(
                     metadata.get("seo_kulcsszavak", [])
                 ),
@@ -482,6 +597,16 @@ class WordPressClient:
                 # mert az is a kategória-feloldás eredményétől függ
             }
         }
+
+        # a RankMath Title, akárcsak a kiemelt kép, OPCIONÁLIS a
+        # payloadban — ha nem sikerült összeállítani (lásd fent),
+        # egyszerűen KIHAGYJUK a kulcsot, ahelyett hogy egy ÜRES
+        # title-t küldenénk (ami felülírná a RankMath saját, a
+        # WordPress oldalon globálisan beállított title-sablonját
+        # egy LÁTHATÓAN üres címmel — ez rosszabb lenne, mint ha meg
+        # sem adjuk)
+        if rank_math_title:
+            payload["meta"]["rank_math_title"] = rank_math_title
 
         # a kiemelt kép OPCIONÁLIS — csak akkor tesszük bele a
         # payloadba, ha a szerző valóban megadott egy ID-t (ha a
