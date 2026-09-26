@@ -53,6 +53,93 @@ DEFAULT_SERIES_CONFIG_PATH = os.path.join(
     "sorozatok.json"
 )
 
+# A Polylang nyelvi URL-előtagjai (2026.09.26-i javítás). A blogon a
+# magyar az ALAPNYELV, annak az URL-jében NINCS előtag
+# (/emily-naploja-27-bejegyzes/), az angol és a spanyol viszont a
+# nyelvkód előtaggal él (/en/emilys-diary-entry-27/,
+# /es/el-diario-de-emily-entrada-27/).
+#
+# MIÉRT KELL EZ: a config/sorozatok.json előtag NÉLKÜLI, sima
+# útvonalakat tárol (pl. "/emilys-diary-entry-{resz}/"), és a
+# generátor korábban ezeket változtatás nélkül írta a gombok href-jébe.
+# Egy EN/ES posztban az előtag nélküli link "működött" ugyan, de csak
+# a WordPress/Polylang 301-es átirányításán keresztül jutott el a
+# helyes /en/... vagy /es/... címre — felesleges átirányítás, ami SEO
+# szempontból kerülendő (lásd build_post_path).
+#
+# HA ÚJ NYELV KERÜL A BLOGRA, ITT is fel kell venni (üres string =
+# nincs előtag, vagyis az alapnyelv).
+LANGUAGE_URL_PREFIXES = {
+    "hu": "",
+    "en": "en",
+    "es": "es",
+}
+
+
+def build_post_path(nyelv, path):
+    """
+    A KÖZPONTI függvény, ami egy poszt útvonalából a poszt nyelvének
+    megfelelő, RELATÍV linket állít elő — MINDEN navigációs link
+    (sorozat eleje gomb, következő rész gomb, és a jelölőbe ágyazott
+    előnézeti gomb) ezt használja, hogy a nyelvi előtag logikája
+    EGYETLEN helyen legyen, ne nyelvenként szétszórt
+    string-összefűzésekben.
+
+        hu, "/emily-naploja-1-bejegyzes/" -> "/emily-naploja-1-bejegyzes/"
+        en, "/emilys-diary-entry-1/"      -> "/en/emilys-diary-entry-1/"
+        es, "/el-salon-parte-7/"          -> "/es/el-salon-parte-7/"
+
+    A visszatérési érték MINDIG relatív (/-jellel kezdődő és záródó),
+    NEM abszolút URL — a WordPress-ben már javított, meglévő posztok
+    linkjei is így néznek ki (href="/en/emilys-diary-entry-1/"), a
+    generátor kimenetének pontosan ezt a formát kell követnie.
+
+    Nem keletkezik dupla előtag (/en/en/...): ha a bemeneti útvonal
+    már a poszt nyelvének előtagjával kezdődik (pl. mert valaki a
+    config/sorozatok.json-ba már előtagosan írta be), azt NEM
+    toldjuk meg újra. Az alapnyelvnél (hu) az útvonal változatlan
+    marad — a magyar kimenet nem változhat.
+
+    Abszolút URL-t (http://, https://) SZÁNDÉKOSAN érintetlenül
+    hagyunk: ott nem tudjuk biztonságosan eldönteni, hol van a
+    domain vége és az útvonal eleje, és a config-ban amúgy sincs
+    ilyen.
+
+    Ismeretlen nyelvkódra ValueError-t dob (nem "kitalálja" az
+    előtagot): egy hibás előtag rossz linket eredményezne.
+    """
+
+    if nyelv not in LANGUAGE_URL_PREFIXES:
+        raise ValueError(
+            f"Ismeretlen nyelv a link előtagjának meghatározásához: "
+            f"'{nyelv}'. Ismert nyelvek: "
+            f"{', '.join(LANGUAGE_URL_PREFIXES)}."
+        )
+
+    if path.startswith(("http://", "https://")):
+        return path
+
+    prefix = LANGUAGE_URL_PREFIXES[nyelv]
+
+    # az útvonalat egységesre hozzuk (szélén lévő perjelek nélkül),
+    # így a bemenet "slug", "/slug" és "/slug/" alakban is helyes
+    trimmed = path.strip("/")
+
+    if not trimmed:
+        return f"/{prefix}/" if prefix else "/"
+
+    if prefix and (
+        trimmed == prefix or trimmed.startswith(prefix + "/")
+    ):
+        # már előtagos -> nem toldjuk meg még egyszer
+        return f"/{trimmed}/"
+
+    if prefix:
+        return f"/{prefix}/{trimmed}/"
+
+    return f"/{trimmed}/"
+
+
 # A láthatatlan jelölő NYITÓ sorának SABLONJA. A {series} és {part}
 # helyekre a JELENLEGI poszt sorozatneve és rész-sorszáma kerül — ez
 # teszi "önazonosítóvá" a jelölőt: a jövőbeli frissítő funkció ebből
@@ -236,7 +323,9 @@ def build_series_start_html(series_name, nyelv, series_config):
             f"(megjelenitett_nev, elso_resz_url, elso_resz_cim)."
         )
 
-    url = info["elso_resz_url"]
+    # a nyelvi URL-előtagot a központi build_post_path() adja hozzá
+    # (EN -> /en/..., ES -> /es/..., HU -> változatlan)
+    url = build_post_path(nyelv, info["elso_resz_url"])
     cim = info["elso_resz_cim"]
     megjelenitett_nev = info["megjelenitett_nev"]
 
@@ -338,7 +427,13 @@ def build_next_part_button_html(series_name, nyelv, resz_szam, series_config):
         )
 
     megjelenitett_nev = info["megjelenitett_nev"]
-    url = info["resz_url_sablon"].format(resz=resz_szam)
+    # ugyanaz a központi függvény, mint a "sorozat eleje" gombnál —
+    # a jelölőbe ágyazott előnézeti gomb is ezen keresztül épül,
+    # tehát a későbbi placeholder-csere ugyanazt a linket kapja
+    url = build_post_path(
+        nyelv,
+        info["resz_url_sablon"].format(resz=resz_szam)
+    )
 
     szoveg = NAV_TEXT_TEMPLATES[nyelv]
 

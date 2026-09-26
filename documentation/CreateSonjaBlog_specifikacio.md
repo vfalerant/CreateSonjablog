@@ -520,6 +520,31 @@ nem építhető fel a következő rész gombja, a jelölő a régi, puszta
 azonosító formájában marad — ez csak egy kényelmi előnézet, hiánya
 nem hiba.
 
+**Nyelvi URL-előtag a navigációs linkekben (2026.09.26-i javítás):** a
+Polylang URL-szerkezete: HU előtag nélkül (`/emily-naploja-27-bejegyzes/`),
+EN `/en/` (`/en/emilys-diary-entry-27/`), ES `/es/`
+(`/es/el-diario-de-emily-entrada-27/`). A `config/sorozatok.json`
+előtag NÉLKÜLI útvonalakat tárol (`elso_resz_url`, `resz_url_sablon`), a
+generátor viszont korábban ezeket változtatás nélkül írta a gombok
+href-jébe — EN/ES posztokban ez felesleges 301-es átirányítást okozott
+(SEO szempontból kerülendő). A javítás: a `converter/navigation.py`
+KÖZPONTI `build_post_path(nyelv, útvonal)` függvénye (a
+`LANGUAGE_URL_PREFIXES` táblával) adja hozzá az előtagot; MINDEN
+navigációs link (sorozat eleje gomb, következő rész gomb, és a
+jelölőbe ágyazott kikommentezett előnézeti gomb) ezen keresztül épül.
+A kimenet mindig RELATÍV (`/en/...`), nincs dupla előtag (`/en/en/...`;
+az már előtagos bemenetet nem toldja meg), a HU kimenet változatlan,
+abszolút URL-t nem érint, ismeretlen nyelvre `ValueError`. Új nyelv
+esetén a `LANGUAGE_URL_PREFIXES`-t is bővíteni kell. Tesztek:
+`python -m unittest discover -s tests -t . -v`. Éles ellenőrzés: az Emily naplója 30. részének
+(mindhárom nyelv) generálása hibátlan, előtagos linkekkel.
+
+*Nyitott pont:* a "placeholder → éles gomb" automatikus csere (a korábbi
+rész posztjában) továbbra sincs megvalósítva — amikor elkészül, a
+linket a `build_next_part_button_html()`-lel (vagyis `build_post_path`-tal)
+kell építenie, és a jelölő keresésekor a már előtagos href-et is
+ismernie kell.
+
 **Szerzői CTA-doboz (2026.09.01-i bővítés) — ELDÖNTVE:** minden poszt
 törzsszövege (és a sorozat-navigáció) alá opcionálisan bekerülhet egy,
 a WordPress oldalon Elementor Saját sablonként elmentett CTA-doboz
