@@ -4,7 +4,7 @@
 
 A Windows desktop app (Python + PySide6) that publishes posts to [sonjablog.com](https://sonjablog.com). The author writes each post in LibreOffice Writer as a single `.odt` file: a metadata table at the top, the story below it. CreateSonjaBlog reads the file, validates it, generates clean HTML and creates or schedules the post through the WordPress REST API, with no copy-pasting into Elementor.
 
-<!-- TODO: add a screenshot of the main window here, e.g. docs/screenshot.png -->
+![screenshot](documentation/screenshot.png)
 
 ## What it does
 
@@ -45,7 +45,9 @@ The processing logic (`converter/`, `wordpress/`) is kept separate from the UI (
 
 ## Getting started
 
-Requirements: Windows, Python 3.10+, and a WordPress site with an Application Password and the companion mu-plugin installed (see section 4 of the spec).
+Requirements: Windows, Python 3.10+, and a WordPress site with an Application Password.
+
+**WordPress side (one-time setup):** copy [`wordpress_functions_php_kiegeszites.php`](wordpress_functions_php_kiegeszites.php) to `wp-content/mu-plugins/createsonjablog.php` on the site. This mu-plugin exposes the RankMath SEO fields to the REST API and adds three authenticated endpoints under `sonjablog/v1` (`set-language`, `link-translations`, `category-id`), so the app can drive free Polylang. All of them require the `edit_posts` capability. See section 4 of the spec for details.
 
 ```bash
 python -m venv .venv
