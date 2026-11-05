@@ -9,6 +9,11 @@
 .env/
 .claude/
 
+# Korábbi post adatok módosítása
+# nem a fejlesztés szerves része
+.scripts/
+
+
 # --- Helyi, automatikusan generált állapot ---
 # A program maga írja/olvassa (melyik történet melyik nyelvi
 # verziója melyik WordPress poszt-ID-hoz tartozik) — ez GÉPENKÉNT/
